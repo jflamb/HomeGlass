@@ -18,7 +18,7 @@ HomeGlass is a native Windows 11 smart home app concept inspired by the broad in
 
 ```powershell
 dotnet restore
-dotnet build
+dotnet build HomeGlass.sln -p:Platform=x64
 ```
 
 ## Run
