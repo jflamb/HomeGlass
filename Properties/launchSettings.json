@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "HomeGlass (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "HomeGlass (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

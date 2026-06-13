@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="HomeGlass.Pages.RoomsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid Padding="28" RowSpacing="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="Rooms" />
+
+        <Grid Grid.Row="1" ColumnSpacing="12" RowSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Border Padding="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+                <StackPanel Spacing="8">
+                    <TextBlock FontSize="20" FontWeight="SemiBold" Text="Living Room" />
+                    <TextBlock Text="7 accessories" />
+                    <TextBlock Text="72 F, lights dimmed" />
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="1" Padding="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+                <StackPanel Spacing="8">
+                    <TextBlock FontSize="20" FontWeight="SemiBold" Text="Kitchen" />
+                    <TextBlock Text="5 accessories" />
+                    <TextBlock Text="Lights on, no motion" />
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="2" Padding="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+                <StackPanel Spacing="8">
+                    <TextBlock FontSize="20" FontWeight="SemiBold" Text="Bedroom" />
+                    <TextBlock Text="4 accessories" />
+                    <TextBlock Text="Quiet mode" />
+                </StackPanel>
+            </Border>
+            <Border Grid.Row="1" Padding="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+                <StackPanel Spacing="8">
+                    <TextBlock FontSize="20" FontWeight="SemiBold" Text="Office" />
+                    <TextBlock Text="6 accessories" />
+                    <TextBlock Text="Desk lamp on" />
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</Page>

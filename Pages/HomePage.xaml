@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="HomeGlass.Pages.HomePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:HomeGlass.Pages"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid Padding="28,20,28,28" RowSpacing="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Spacing="4">
+            <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="Good evening" />
+            <TextBlock Style="{StaticResource BodyTextBlockStyle}" Text="HomeGlass is ready to manage rooms, devices, scenes, and automations from a native Windows 11 shell." />
+        </StackPanel>
+
+        <Grid Grid.Row="1" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Padding="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+                <StackPanel Spacing="6">
+                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Climate" />
+                    <TextBlock FontSize="28" FontWeight="SemiBold" Text="72 F" />
+                    <TextBlock Text="Living room" />
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="1" Padding="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+                <StackPanel Spacing="6">
+                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Lighting" />
+                    <TextBlock FontSize="28" FontWeight="SemiBold" Text="8 on" />
+                    <TextBlock Text="Across 4 rooms" />
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="2" Padding="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+                <StackPanel Spacing="6">
+                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Security" />
+                    <TextBlock FontSize="28" FontWeight="SemiBold" Text="Armed" />
+                    <TextBlock Text="Perimeter only" />
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="3" Padding="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+                <StackPanel Spacing="6">
+                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Energy" />
+                    <TextBlock FontSize="28" FontWeight="SemiBold" Text="1.8 kW" />
+                    <TextBlock Text="Current draw" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <Grid Grid.Row="2" ColumnSpacing="20">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Spacing="12">
+                <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Favorite accessories" />
+                <Grid ColumnSpacing="12" RowSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Border Padding="18" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" CornerRadius="8">
+                        <StackPanel Spacing="8">
+                            <FontIcon HorizontalAlignment="Left" Glyph="&#xE706;" />
+                            <TextBlock FontWeight="SemiBold" Text="Kitchen lights" />
+                            <TextBlock Text="On, 68%" />
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="1" Padding="18" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" CornerRadius="8">
+                        <StackPanel Spacing="8">
+                            <FontIcon HorizontalAlignment="Left" Glyph="&#xE7E8;" />
+                            <TextBlock FontWeight="SemiBold" Text="Front door" />
+                            <TextBlock Text="Locked" />
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Row="1" Padding="18" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" CornerRadius="8">
+                        <StackPanel Spacing="8">
+                            <FontIcon HorizontalAlignment="Left" Glyph="&#xE770;" />
+                            <TextBlock FontWeight="SemiBold" Text="Thermostat" />
+                            <TextBlock Text="Cooling to 72 F" />
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Row="1" Grid.Column="1" Padding="18" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" CornerRadius="8">
+                        <StackPanel Spacing="8">
+                            <FontIcon HorizontalAlignment="Left" Glyph="&#xE7F4;" />
+                            <TextBlock FontWeight="SemiBold" Text="Garage camera" />
+                            <TextBlock Text="No motion" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </StackPanel>
+
+            <StackPanel Grid.Column="1" Spacing="12">
+                <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Scenes" />
+                <Button HorizontalAlignment="Stretch" Content="Good Morning" />
+                <Button HorizontalAlignment="Stretch" Content="Movie Night" />
+                <Button HorizontalAlignment="Stretch" Content="Away" />
+                <Button HorizontalAlignment="Stretch" Content="All Off" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Page>

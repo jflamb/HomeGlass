@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="HomeGlass.Pages.DevicesPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid Padding="28" RowSpacing="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="Devices" />
+
+        <ListView Grid.Row="1" SelectionMode="None">
+            <ListViewItem>
+                <StackPanel Orientation="Horizontal" Spacing="14">
+                    <FontIcon Glyph="&#xE706;" />
+                    <TextBlock Width="220" Text="Kitchen lights" />
+                    <TextBlock Text="On, 68%" />
+                </StackPanel>
+            </ListViewItem>
+            <ListViewItem>
+                <StackPanel Orientation="Horizontal" Spacing="14">
+                    <FontIcon Glyph="&#xE7E8;" />
+                    <TextBlock Width="220" Text="Front door lock" />
+                    <TextBlock Text="Locked" />
+                </StackPanel>
+            </ListViewItem>
+            <ListViewItem>
+                <StackPanel Orientation="Horizontal" Spacing="14">
+                    <FontIcon Glyph="&#xE770;" />
+                    <TextBlock Width="220" Text="Hall thermostat" />
+                    <TextBlock Text="Cooling to 72 F" />
+                </StackPanel>
+            </ListViewItem>
+            <ListViewItem>
+                <StackPanel Orientation="Horizontal" Spacing="14">
+                    <FontIcon Glyph="&#xE7F4;" />
+                    <TextBlock Width="220" Text="Garage camera" />
+                    <TextBlock Text="Online" />
+                </StackPanel>
+            </ListViewItem>
+        </ListView>
+    </Grid>
+</Page>
