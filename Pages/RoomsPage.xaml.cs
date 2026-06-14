@@ -154,9 +154,8 @@ public sealed partial class RoomsPage : Page
     private static string BuildGroupSummary(IReadOnlyList<RoomCardViewModel> rooms)
     {
         var deviceCount = rooms.Sum(room => room.DeviceCount);
-        var entityCount = rooms.Sum(room => room.EntityCount);
 
-        return $"{rooms.Count} {Pluralize(rooms.Count, "room")}, {deviceCount} {Pluralize(deviceCount, "device")}, {entityCount} {Pluralize(entityCount, "entity")}";
+        return $"{rooms.Count} {Pluralize(rooms.Count, "room")}, {deviceCount} {Pluralize(deviceCount, "device")}";
     }
 
     private static string Pluralize(int count, string noun)
@@ -180,8 +179,7 @@ public sealed record RoomCardViewModel(
     string Detail,
     string IconGlyph,
     IReadOnlyList<string> StatusChips,
-    int DeviceCount,
-    int EntityCount)
+    int DeviceCount)
 {
     public static RoomCardViewModel FromArea(
         HomeAssistantArea area,
@@ -194,64 +192,75 @@ public sealed record RoomCardViewModel(
             .OfType<HomeAssistantEntityState>()
             .ToList();
 
-        var chips = BuildStatusChips(availableEntities, devices.Count, entities.Count);
-        var detail = $"{devices.Count} {Pluralize(devices.Count, "device")} • {entities.Count} {Pluralize(entities.Count, "entity")}";
+        var chips = BuildStatusChips(availableEntities, devices.Count);
+        var detail = $"{devices.Count} {Pluralize(devices.Count, "device")}";
 
         return new RoomCardViewModel(
             area.Name,
             detail,
             GetIconGlyph(area.Icon),
             chips,
-            devices.Count,
-            entities.Count);
+            devices.Count);
     }
 
     private static IReadOnlyList<string> BuildStatusChips(
         IReadOnlyList<HomeAssistantEntityState> states,
-        int deviceCount,
-        int entityCount)
+        int deviceCount)
     {
         var chips = new List<string>();
 
-        var lightsOn = states.Count(state => GetDomain(state.EntityId) == "light" && state.State == "on");
+        var lightStates = states
+            .Where(state => GetDomain(state.EntityId) == "light")
+            .Where(IsPrimaryLight)
+            .ToList();
+        var lightsOn = lightStates.Count(state => state.State == "on");
         if (lightsOn > 0)
         {
             chips.Add($"{lightsOn} {Pluralize(lightsOn, "light")} on");
         }
-
-        var unlocked = states.Count(state =>
-            GetDomain(state.EntityId) == "lock" &&
-            (state.State == "unlocked" || state.State == "open"));
-        if (unlocked > 0)
+        else if (lightStates.Count > 0)
         {
-            chips.Add($"{unlocked} unlocked");
+            chips.Add("Lights off");
         }
 
-        var activeMotion = states.Count(state =>
-            GetDomain(state.EntityId) == "binary_sensor" &&
-            state.State == "on" &&
-            TryGetDeviceClass(state) is "motion" or "occupancy" or "presence");
-        if (activeMotion > 0)
+        var fans = states.Where(state => GetDomain(state.EntityId) == "fan").ToList();
+        var fansOn = fans.Count(state => state.State == "on");
+        if (fansOn > 0)
         {
-            chips.Add("Motion detected");
+            chips.Add($"{fansOn} {Pluralize(fansOn, "fan")} on");
+        }
+        else if (fans.Count > 0)
+        {
+            chips.Add("Fans off");
         }
 
-        var climate = states.FirstOrDefault(state => GetDomain(state.EntityId) == "climate");
-        var temperature = TryGetTemperature(climate);
-        if (!string.IsNullOrWhiteSpace(temperature))
+        var climateChip = BuildClimateChip(states);
+        if (!string.IsNullOrWhiteSpace(climateChip))
         {
-            chips.Add(temperature);
+            chips.Add(climateChip);
         }
 
-        var unavailable = states.Count(state => state.State is "unavailable" or "unknown");
-        if (unavailable > 0)
+        var presenceChip = BuildPresenceChip(states);
+        if (!string.IsNullOrWhiteSpace(presenceChip))
         {
-            chips.Add($"{unavailable} unavailable");
+            chips.Add(presenceChip);
+        }
+
+        var lockChip = BuildLockChip(states);
+        if (!string.IsNullOrWhiteSpace(lockChip))
+        {
+            chips.Add(lockChip);
+        }
+
+        var contactChip = BuildContactChip(states);
+        if (!string.IsNullOrWhiteSpace(contactChip))
+        {
+            chips.Add(contactChip);
         }
 
         if (chips.Count == 0)
         {
-            chips.Add(entityCount > 0 || deviceCount > 0 ? "Ready" : "Empty");
+            chips.Add(deviceCount > 0 ? "Ready" : "Empty");
         }
 
         return chips;
@@ -270,9 +279,96 @@ public sealed record RoomCardViewModel(
             : null;
     }
 
-    private static string? TryGetTemperature(HomeAssistantEntityState? climate)
+    private static bool IsPrimaryLight(HomeAssistantEntityState state)
     {
-        if (climate is null || !climate.Attributes.TryGetProperty("current_temperature", out var temperature))
+        if (!state.Attributes.TryGetProperty("entity_id", out var groupedEntities))
+        {
+            return true;
+        }
+
+        return groupedEntities.ValueKind != System.Text.Json.JsonValueKind.Array;
+    }
+
+    private static string? BuildClimateChip(IReadOnlyList<HomeAssistantEntityState> states)
+    {
+        var climate = states.FirstOrDefault(state => GetDomain(state.EntityId) == "climate");
+        if (climate is null)
+        {
+            return null;
+        }
+
+        var temperature = TryGetTemperature(climate);
+        if (string.IsNullOrWhiteSpace(temperature))
+        {
+            return NormalizeState(climate.State);
+        }
+
+        return climate.State is "off" or "unavailable" or "unknown"
+            ? temperature
+            : $"{temperature} {NormalizeState(climate.State)}";
+    }
+
+    private static string? BuildPresenceChip(IReadOnlyList<HomeAssistantEntityState> states)
+    {
+        var presenceStates = states
+            .Where(state =>
+                GetDomain(state.EntityId) == "binary_sensor" &&
+                TryGetDeviceClass(state) is "motion" or "occupancy" or "presence")
+            .ToList();
+
+        if (presenceStates.Count == 0)
+        {
+            return null;
+        }
+
+        return presenceStates.Any(state => state.State == "on")
+            ? "Presence detected"
+            : "No presence";
+    }
+
+    private static string? BuildLockChip(IReadOnlyList<HomeAssistantEntityState> states)
+    {
+        var locks = states.Where(state => GetDomain(state.EntityId) == "lock").ToList();
+        if (locks.Count == 0)
+        {
+            return null;
+        }
+
+        var unlocked = locks.Count(state => state.State is "unlocked" or "open");
+        if (unlocked > 0)
+        {
+            return unlocked == 1 ? "Unlocked" : $"{unlocked} unlocked";
+        }
+
+        var locked = locks.Count(state => state.State == "locked");
+        return locked == locks.Count ? "Locked" : null;
+    }
+
+    private static string? BuildContactChip(IReadOnlyList<HomeAssistantEntityState> states)
+    {
+        var contacts = states
+            .Where(state =>
+                GetDomain(state.EntityId) == "binary_sensor" &&
+                TryGetDeviceClass(state) is "door" or "garage_door" or "opening" or "window")
+            .ToList();
+
+        if (contacts.Count == 0)
+        {
+            return null;
+        }
+
+        var open = contacts.Count(state => state.State == "on");
+        if (open > 0)
+        {
+            return open == 1 ? "Open" : $"{open} open";
+        }
+
+        return "Closed";
+    }
+
+    private static string? TryGetTemperature(HomeAssistantEntityState climate)
+    {
+        if (!climate.Attributes.TryGetProperty("current_temperature", out var temperature))
         {
             return null;
         }
@@ -283,6 +379,11 @@ public sealed record RoomCardViewModel(
             System.Text.Json.JsonValueKind.String => temperature.GetString(),
             _ => null
         };
+    }
+
+    private static string NormalizeState(string state)
+    {
+        return state.Replace('_', ' ');
     }
 
     private static string Pluralize(int count, string noun)
