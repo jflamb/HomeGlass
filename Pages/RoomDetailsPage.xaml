@@ -53,8 +53,9 @@
                             </StackPanel>
 
                             <GridView
+                                ItemClick="DeviceGridView_ItemClick"
                                 ItemsSource="{Binding Devices}"
-                                IsItemClickEnabled="False"
+                                IsItemClickEnabled="True"
                                 SelectionMode="None">
                                 <GridView.ItemTemplate>
                                     <DataTemplate>
@@ -72,6 +73,7 @@
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="24" />
                                                         <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
                                                     </Grid.ColumnDefinitions>
                                                     <FontIcon
                                                         Width="20"
@@ -84,6 +86,149 @@
                                                     <StackPanel Grid.Column="1" Spacing="2">
                                                         <TextBlock FontSize="18" FontWeight="SemiBold" Text="{Binding Name}" TextWrapping="Wrap" />
                                                         <TextBlock Text="{Binding Detail}" TextWrapping="Wrap" />
+                                                    </StackPanel>
+                                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4">
+                                                        <ProgressRing
+                                                            Width="24"
+                                                            Height="24"
+                                                            IsActive="{Binding IsBusy}"
+                                                            Visibility="{Binding BusyVisibility}" />
+                                                        <Button
+                                                            Width="32"
+                                                            Height="32"
+                                                            Padding="0"
+                                                            Click="ToggleDeviceButton_Click"
+                                                            CommandParameter="{Binding}"
+                                                            IsEnabled="{Binding IsEnabled}"
+                                                            ToolTipService.ToolTip="{Binding ToggleToolTip}"
+                                                            Visibility="{Binding QuickActionVisibility}">
+                                                            <FontIcon FontSize="14" Glyph="{Binding ActionGlyph}" />
+                                                        </Button>
+                                                        <Button
+                                                            Width="32"
+                                                            Height="32"
+                                                            Padding="0"
+                                                            IsEnabled="{Binding IsEnabled}"
+                                                            ToolTipService.ToolTip="More controls"
+                                                            Visibility="{Binding DetailControlsVisibility}">
+                                                            <FontIcon FontSize="14" Glyph="&#xE712;" />
+                                                            <Button.Flyout>
+                                                                <Flyout Placement="Right">
+                                                                    <StackPanel Width="300" Spacing="14">
+                                                                        <StackPanel Spacing="2">
+                                                                            <TextBlock FontSize="18" FontWeight="SemiBold" Text="{Binding Name}" TextWrapping="Wrap" />
+                                                                            <TextBlock Text="{Binding ControlSummary}" TextWrapping="Wrap" />
+                                                                        </StackPanel>
+
+                                                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                                                            <Button
+                                                                                Click="SetDevicePowerButton_Click"
+                                                                                CommandParameter="{Binding}"
+                                                                                IsEnabled="{Binding IsEnabled}"
+                                                                                Tag="turn_on">
+                                                                                <TextBlock Text="On" />
+                                                                            </Button>
+                                                                            <Button
+                                                                                Click="SetDevicePowerButton_Click"
+                                                                                CommandParameter="{Binding}"
+                                                                                IsEnabled="{Binding IsEnabled}"
+                                                                                Tag="turn_off">
+                                                                                <TextBlock Text="Off" />
+                                                                            </Button>
+                                                                        </StackPanel>
+
+                                                                        <StackPanel Spacing="6" Visibility="{Binding BrightnessVisibility}">
+                                                                            <TextBlock Text="{Binding BrightnessLabel}" />
+                                                                            <Slider
+                                                                                Maximum="100"
+                                                                                Minimum="1"
+                                                                                StepFrequency="1"
+                                                                                Value="{Binding BrightnessPercent, Mode=TwoWay}" />
+                                                                        </StackPanel>
+
+                                                                        <StackPanel Spacing="6" Visibility="{Binding ColorTemperatureVisibility}">
+                                                                            <TextBlock Text="{Binding ColorTemperatureLabel}" />
+                                                                            <Slider
+                                                                                Maximum="{Binding MaxColorTemperatureKelvin}"
+                                                                                Minimum="{Binding MinColorTemperatureKelvin}"
+                                                                                StepFrequency="50"
+                                                                                Value="{Binding ColorTemperatureKelvin, Mode=TwoWay}" />
+                                                                        </StackPanel>
+
+                                                                        <StackPanel Spacing="6" Visibility="{Binding ColorVisibility}">
+                                                                            <TextBlock Text="Color" />
+                                                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                                                <Button
+                                                                                    Width="32"
+                                                                                    Height="32"
+                                                                                    Padding="0"
+                                                                                    Background="#FFFFA05A"
+                                                                                    BorderThickness="1"
+                                                                                    Click="SetLightColorButton_Click"
+                                                                                    CommandParameter="{Binding}"
+                                                                                    IsEnabled="{Binding IsEnabled}"
+                                                                                    Tag="255,160,90" />
+                                                                                <Button
+                                                                                    Width="32"
+                                                                                    Height="32"
+                                                                                    Padding="0"
+                                                                                    Background="#FFFFD666"
+                                                                                    BorderThickness="1"
+                                                                                    Click="SetLightColorButton_Click"
+                                                                                    CommandParameter="{Binding}"
+                                                                                    IsEnabled="{Binding IsEnabled}"
+                                                                                    Tag="255,214,102" />
+                                                                                <Button
+                                                                                    Width="32"
+                                                                                    Height="32"
+                                                                                    Padding="0"
+                                                                                    Background="#FF5EEAD4"
+                                                                                    BorderThickness="1"
+                                                                                    Click="SetLightColorButton_Click"
+                                                                                    CommandParameter="{Binding}"
+                                                                                    IsEnabled="{Binding IsEnabled}"
+                                                                                    Tag="94,234,212" />
+                                                                                <Button
+                                                                                    Width="32"
+                                                                                    Height="32"
+                                                                                    Padding="0"
+                                                                                    Background="#FF60A5FA"
+                                                                                    BorderThickness="1"
+                                                                                    Click="SetLightColorButton_Click"
+                                                                                    CommandParameter="{Binding}"
+                                                                                    IsEnabled="{Binding IsEnabled}"
+                                                                                    Tag="96,165,250" />
+                                                                                <Button
+                                                                                    Width="32"
+                                                                                    Height="32"
+                                                                                    Padding="0"
+                                                                                    Background="#FFA78BFA"
+                                                                                    BorderThickness="1"
+                                                                                    Click="SetLightColorButton_Click"
+                                                                                    CommandParameter="{Binding}"
+                                                                                    IsEnabled="{Binding IsEnabled}"
+                                                                                    Tag="167,139,250" />
+                                                                            </StackPanel>
+                                                                        </StackPanel>
+
+                                                                        <Button
+                                                                            Click="ApplyLightControlsButton_Click"
+                                                                            CommandParameter="{Binding}"
+                                                                            IsEnabled="{Binding IsEnabled}"
+                                                                            Visibility="{Binding LightControlsVisibility}">
+                                                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                                                <ProgressRing
+                                                                                    Width="16"
+                                                                                    Height="16"
+                                                                                    IsActive="{Binding IsBusy}"
+                                                                                    Visibility="{Binding BusyVisibility}" />
+                                                                                <TextBlock Text="Apply" />
+                                                                            </StackPanel>
+                                                                        </Button>
+                                                                    </StackPanel>
+                                                                </Flyout>
+                                                            </Button.Flyout>
+                                                        </Button>
                                                     </StackPanel>
                                                 </Grid>
 
