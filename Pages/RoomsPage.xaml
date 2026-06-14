@@ -15,7 +15,7 @@
         </Grid.RowDefinitions>
 
         <StackPanel Spacing="4">
-            <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="Rooms" />
+            <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="Home" />
             <TextBlock x:Name="RoomsSummaryText" TextWrapping="Wrap" />
         </StackPanel>
 

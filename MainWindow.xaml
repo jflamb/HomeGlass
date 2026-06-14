@@ -39,31 +39,11 @@
             SelectionChanged="NavView_SelectionChanged">
             <NavigationView.MenuItems>
                 <NavigationViewItem
-                    Content="Dashboard"
+                    Content="Home"
                     IsSelected="True"
                     Tag="home">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE80F;" />
-                    </NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem Content="Rooms" Tag="rooms">
-                    <NavigationViewItem.Icon>
-                        <FontIcon Glyph="&#xE825;" />
-                    </NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem Content="Devices" Tag="devices">
-                    <NavigationViewItem.Icon>
-                        <FontIcon Glyph="&#xE950;" />
-                    </NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem Content="Scenes" Tag="scenes">
-                    <NavigationViewItem.Icon>
-                        <FontIcon Glyph="&#xE7B8;" />
-                    </NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem Content="About" Tag="about">
-                    <NavigationViewItem.Icon>
-                        <FontIcon Glyph="&#xEA3A;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
             </NavigationView.MenuItems>

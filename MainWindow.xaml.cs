@@ -18,7 +18,7 @@ public sealed partial class MainWindow : Window
         SetTitleBar(AppTitleBar);
         AppWindow.TitleBar.PreferredHeightOption = TitleBarHeightOption.Tall;
         AppWindow.SetIcon("Assets/AppIcon.ico");
-        NavFrame.Navigate(typeof(HomePage));
+        NavFrame.Navigate(typeof(RoomsPage));
     }
 
     private void TitleBar_PaneToggleRequested(TitleBar sender, object args)
@@ -42,19 +42,7 @@ public sealed partial class MainWindow : Window
             switch (item.Tag)
             {
                 case "home":
-                    NavFrame.Navigate(typeof(HomePage));
-                    break;
-                case "rooms":
                     NavFrame.Navigate(typeof(RoomsPage));
-                    break;
-                case "devices":
-                    NavFrame.Navigate(typeof(DevicesPage));
-                    break;
-                case "scenes":
-                    NavFrame.Navigate(typeof(ScenesPage));
-                    break;
-                case "about":
-                    NavFrame.Navigate(typeof(AboutPage));
                     break;
                 default:
                     throw new InvalidOperationException($"Unknown navigation item tag: {item.Tag}");
