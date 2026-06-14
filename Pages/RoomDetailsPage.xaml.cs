@@ -3,8 +3,11 @@ using HomeGlass.Services;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
+using System.Collections.ObjectModel;
 using System.Text.Json;
 using Windows.UI;
 
@@ -13,11 +16,14 @@ namespace HomeGlass.Pages;
 public sealed partial class RoomDetailsPage : Page
 {
     private RoomCardViewModel? _room;
-    private IReadOnlyList<DeviceGroupViewModel> _deviceGroups = [];
+    private readonly ObservableCollection<DeviceGroupViewModel> _deviceGroups = [];
+    private IReadOnlyList<HomeAssistantDevice> _devices = [];
+    private IReadOnlyList<HomeAssistantEntityRegistryEntry> _entities = [];
 
     public RoomDetailsPage()
     {
         InitializeComponent();
+        DeviceGroupsListView.ItemsSource = _deviceGroups;
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
@@ -42,21 +48,21 @@ public sealed partial class RoomDetailsPage : Page
             var statesTask = AppServices.HomeAssistantApi.GetStatesAsync();
 
             await Task.WhenAll(devicesTask, entitiesTask, statesTask);
+            _devices = devicesTask.Result;
+            _entities = entitiesTask.Result;
 
             var groups = BuildDeviceGroups(
                 room.AreaId,
                 room.Name,
-                devicesTask.Result,
-                entitiesTask.Result,
+                _devices,
+                _entities,
                 statesTask.Result);
 
-            _deviceGroups = groups;
-            DeviceGroupsListView.ItemsSource = groups;
+            ApplyDeviceGroups(groups);
         }
         catch
         {
-            _deviceGroups = [];
-            DeviceGroupsListView.ItemsSource = Array.Empty<DeviceGroupViewModel>();
+            _deviceGroups.Clear();
         }
     }
 
@@ -66,6 +72,60 @@ public sealed partial class RoomDetailsPage : Page
         {
             await ToggleDeviceAsync(device);
         }
+    }
+
+    private void MoreControlsButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement element)
+        {
+            ShowDeviceFlyout(element);
+        }
+    }
+
+    private void DeviceCard_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (IsInsideButton(e.OriginalSource as DependencyObject))
+        {
+            return;
+        }
+
+        if (sender is FrameworkElement element)
+        {
+            ShowDeviceFlyout(element);
+        }
+    }
+
+    private static void ShowDeviceFlyout(FrameworkElement element)
+    {
+        var flyoutTarget = element is Border
+            ? element
+            : FindAncestor<Border>(element);
+        if (flyoutTarget?.Tag is DeviceCardViewModel { HasSecondaryControls: true })
+        {
+            FlyoutBase.ShowAttachedFlyout(flyoutTarget);
+        }
+    }
+
+    private static bool IsInsideButton(DependencyObject? source)
+    {
+        return FindAncestor<Button>(source) is not null;
+    }
+
+    private static T? FindAncestor<T>(DependencyObject? source)
+        where T : DependencyObject
+    {
+        var current = source;
+        while (current is not null)
+        {
+            if (current is T match)
+            {
+                return match;
+            }
+
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return null;
     }
 
     private async void SetDevicePowerButton_Click(object sender, RoutedEventArgs e)
@@ -158,7 +218,7 @@ public sealed partial class RoomDetailsPage : Page
 
             if (_room is not null)
             {
-                await LoadDevicesAsync(_room);
+                await RefreshDeviceStatesAsync(_room);
             }
         }
         catch
@@ -168,6 +228,46 @@ public sealed partial class RoomDetailsPage : Page
         finally
         {
             device.IsBusy = false;
+        }
+    }
+
+    private async Task RefreshDeviceStatesAsync(RoomCardViewModel room)
+    {
+        var states = await AppServices.HomeAssistantApi.GetStatesAsync();
+        var groups = BuildDeviceGroups(room.AreaId, room.Name, _devices, _entities, states);
+        ApplyDeviceGroups(groups);
+    }
+
+    private void ApplyDeviceGroups(IReadOnlyList<DeviceGroupViewModel> groups)
+    {
+        for (var index = _deviceGroups.Count - 1; index >= 0; index--)
+        {
+            if (!groups.Any(group => group.Name == _deviceGroups[index].Name))
+            {
+                _deviceGroups.RemoveAt(index);
+            }
+        }
+
+        for (var targetIndex = 0; targetIndex < groups.Count; targetIndex++)
+        {
+            var incomingGroup = groups[targetIndex];
+            var existingGroup = _deviceGroups.FirstOrDefault(group => group.Name == incomingGroup.Name);
+
+            if (existingGroup is null)
+            {
+                _deviceGroups.Insert(targetIndex, incomingGroup);
+            }
+            else
+            {
+                existingGroup.Summary = incomingGroup.Summary;
+                existingGroup.ApplyDevices(incomingGroup.Devices);
+
+                var existingIndex = _deviceGroups.IndexOf(existingGroup);
+                if (existingIndex != targetIndex)
+                {
+                    _deviceGroups.Move(existingIndex, targetIndex);
+                }
+            }
         }
     }
 
@@ -213,11 +313,13 @@ public sealed partial class RoomDetailsPage : Page
         return type switch
         {
             "Lights" => 0,
-            "Fans" => 1,
-            "Climate" => 2,
-            "Locks" => 3,
-            "Media" => 4,
-            "Sensors" => 5,
+            "Light Groups" => 1,
+            "Fans" => 2,
+            "Climate" => 3,
+            "Locks" => 4,
+            "Media" => 5,
+            "Sensors" => 6,
+            "Controls" => 7,
             _ => 99
         };
     }
@@ -228,7 +330,58 @@ public sealed partial class RoomDetailsPage : Page
     }
 }
 
-public sealed record DeviceGroupViewModel(string Name, string Summary, IReadOnlyList<DeviceCardViewModel> Devices);
+public sealed class DeviceGroupViewModel : ObservableObject
+{
+    private string _summary;
+
+    public DeviceGroupViewModel(string name, string summary, IReadOnlyList<DeviceCardViewModel> devices)
+    {
+        Name = name;
+        _summary = summary;
+        Devices = new ObservableCollection<DeviceCardViewModel>(devices);
+    }
+
+    public string Name { get; }
+
+    public string Summary
+    {
+        get => _summary;
+        set => SetProperty(ref _summary, value);
+    }
+
+    public ObservableCollection<DeviceCardViewModel> Devices { get; }
+
+    public void ApplyDevices(IReadOnlyList<DeviceCardViewModel> devices)
+    {
+        for (var index = Devices.Count - 1; index >= 0; index--)
+        {
+            if (!devices.Any(device => device.Key == Devices[index].Key))
+            {
+                Devices.RemoveAt(index);
+            }
+        }
+
+        for (var targetIndex = 0; targetIndex < devices.Count; targetIndex++)
+        {
+            var incomingDevice = devices[targetIndex];
+            var existingDevice = Devices.FirstOrDefault(device => device.Key == incomingDevice.Key);
+
+            if (existingDevice is null)
+            {
+                Devices.Insert(targetIndex, incomingDevice);
+            }
+            else
+            {
+                var existingIndex = Devices.IndexOf(existingDevice);
+                Devices[existingIndex] = incomingDevice;
+                if (existingIndex != targetIndex)
+                {
+                    Devices.Move(existingIndex, targetIndex);
+                }
+            }
+        }
+    }
+}
 
 public sealed record LightFeatureSet(
     bool SupportsBrightness,
@@ -247,6 +400,7 @@ public sealed class DeviceCardViewModel : ObservableObject
     private double _colorTemperatureKelvin;
 
     private DeviceCardViewModel(
+        string key,
         string name,
         string detail,
         string type,
@@ -268,6 +422,7 @@ public sealed class DeviceCardViewModel : ObservableObject
         int maxColorTemperatureKelvin,
         bool isOn)
     {
+        Key = key;
         Name = name;
         Detail = detail;
         Type = type;
@@ -289,6 +444,8 @@ public sealed class DeviceCardViewModel : ObservableObject
         MaxColorTemperatureKelvin = maxColorTemperatureKelvin;
         IsOn = isOn;
     }
+
+    public string Key { get; }
 
     public string Name { get; }
 
@@ -346,6 +503,8 @@ public sealed class DeviceCardViewModel : ObservableObject
     public Visibility IconVisibility => IsBusy ? Visibility.Collapsed : Visibility.Visible;
 
     public Visibility DetailControlsVisibility => IsControllable ? Visibility.Visible : Visibility.Collapsed;
+
+    public bool HasSecondaryControls => IsControllable;
 
     public Visibility LightControlsVisibility => PrimaryDomain == "light" ? Visibility.Visible : Visibility.Collapsed;
 
@@ -406,21 +565,23 @@ public sealed class DeviceCardViewModel : ObservableObject
             .Select(entity => statesByEntityId.TryGetValue(entity.EntityId, out var state) ? state : null)
             .OfType<HomeAssistantEntityState>()
             .ToList();
+        var isLightGroup = IsLightGroupDevice(device, entities, states);
         var primaryDomain = GetPrimaryDomain(device, states, entities);
-        var primaryStates = states.Where(state => GetDomain(state.EntityId) == primaryDomain).ToList();
+        var serviceDomain = primaryDomain == "light_group" ? "light" : primaryDomain;
+        var primaryStates = GetPrimaryStates(primaryDomain, states);
         var primaryState = primaryStates.FirstOrDefault(state => state.State == "on")
             ?? primaryStates.FirstOrDefault();
         var unavailable = IsUnavailable(primaryDomain, states);
         var active = !unavailable && IsActive(primaryDomain, states);
-        var isLightGroup = primaryDomain == "light" && IsLightGroupDevice(device, entities, states);
         var chips = BuildStatusChips(primaryDomain, states, roomEntities, statesByEntityId, isLightGroup);
         var accent = active ? GetAccent(primaryDomain) : Colors.Transparent;
         var isControllable = !unavailable
             && primaryState is not null
-            && primaryDomain is "light" or "fan";
+            && serviceDomain is "light" or "fan";
         var lightFeatures = GetLightFeatures(primaryStates);
 
         return new DeviceCardViewModel(
+            device.Id,
             TrimRoomPrefix(device.NameByUser ?? device.Name ?? device.Model ?? "Device", roomName),
             BuildDetail(device, entities, states, primaryDomain),
             GetTypeName(primaryDomain),
@@ -434,7 +595,7 @@ public sealed class DeviceCardViewModel : ObservableObject
                 : active ? new SolidColorBrush(Color.FromArgb(220, accent.R, accent.G, accent.B)) : new SolidColorBrush(Color.FromArgb(255, 58, 58, 58)),
             new Thickness(active ? 2 : 1),
             unavailable ? 0.58 : 1,
-            primaryDomain,
+            serviceDomain,
             primaryState?.EntityId,
             isControllable,
             lightFeatures.SupportsBrightness,
@@ -452,10 +613,29 @@ public sealed class DeviceCardViewModel : ObservableObject
         IReadOnlyList<HomeAssistantEntityState> states,
         IReadOnlyList<HomeAssistantEntityRegistryEntry> entities)
     {
-        var domains = states.Select(state => GetDomain(state.EntityId)).Concat(entities.Select(entity => GetDomain(entity.EntityId))).ToList();
+        var domains = states
+            .Where(state => !IsIndicatorLight(state))
+            .Select(state => GetDomain(state.EntityId))
+            .Concat(entities.Where(entity => !IsIndicatorLight(entity)).Select(entity => GetDomain(entity.EntityId)))
+            .ToList();
+        if (IsLightGroupDevice(device, entities, states))
+        {
+            return "light_group";
+        }
+
         if (domains.Contains("fan") || LooksLikeFanDevice(device))
         {
             return "fan";
+        }
+
+        if (LooksLikeControlDevice(device, states, entities))
+        {
+            return "control";
+        }
+
+        if (LooksLikeMediaDisplay(device))
+        {
+            return domains.Contains("media_player") ? "media_player" : "media_display";
         }
 
         foreach (var domain in new[] { "light", "fan", "climate", "lock", "cover", "media_player", "binary_sensor", "sensor" })
@@ -484,6 +664,48 @@ public sealed class DeviceCardViewModel : ObservableObject
             && value.Contains(word, StringComparison.CurrentCultureIgnoreCase);
     }
 
+    private static bool LooksLikeControlDevice(
+        HomeAssistantDevice device,
+        IReadOnlyList<HomeAssistantEntityState> states,
+        IReadOnlyList<HomeAssistantEntityRegistryEntry> entities)
+    {
+        return ContainsWord(device.Model, "dimmer")
+            || ContainsWord(device.Model, "button")
+            || ContainsWord(device.Model, "switch")
+            || ContainsWord(device.Name, "dimmer")
+            || ContainsWord(device.Name, "button")
+            || ContainsWord(device.Name, "switch")
+            || ContainsWord(device.Manufacturer, "Inovelli")
+            || entities.Any(entity => entity.EntityId.Contains("button", StringComparison.OrdinalIgnoreCase))
+            || states.Any(IsIndicatorLight);
+    }
+
+    private static bool LooksLikeMediaDisplay(HomeAssistantDevice device)
+    {
+        return ContainsWord(device.Name, "echo")
+            || ContainsWord(device.Model, "echo")
+            || ContainsWord(device.Manufacturer, "Amazon")
+            || ContainsWord(device.Name, "nest")
+            || ContainsWord(device.Model, "nest")
+            || ContainsWord(device.Model, "display")
+            || ContainsWord(device.Manufacturer, "Google");
+    }
+
+    private static bool IsIndicatorLight(HomeAssistantEntityState state)
+    {
+        return GetDomain(state.EntityId) == "light"
+            && (state.EntityId.Contains("indicator", StringComparison.OrdinalIgnoreCase)
+                || (TryGetAttributeString(state, "friendly_name")?.Contains("indicator", StringComparison.CurrentCultureIgnoreCase) ?? false));
+    }
+
+    private static bool IsIndicatorLight(HomeAssistantEntityRegistryEntry entity)
+    {
+        return GetDomain(entity.EntityId) == "light"
+            && (entity.EntityId.Contains("indicator", StringComparison.OrdinalIgnoreCase)
+                || (entity.Name?.Contains("indicator", StringComparison.CurrentCultureIgnoreCase) ?? false)
+                || (entity.OriginalName?.Contains("indicator", StringComparison.CurrentCultureIgnoreCase) ?? false));
+    }
+
     private static IReadOnlyList<StatusChipViewModel> BuildStatusChips(
         string primaryDomain,
         IReadOnlyList<HomeAssistantEntityState> states,
@@ -492,7 +714,7 @@ public sealed class DeviceCardViewModel : ObservableObject
         bool isLightGroup)
     {
         var chips = new List<StatusChipViewModel>();
-        var primaryStates = states.Where(state => GetDomain(state.EntityId) == primaryDomain).ToList();
+        var primaryStates = GetPrimaryStates(primaryDomain, states);
         if (IsUnavailable(primaryDomain, states))
         {
             chips.Add(UnavailableChip());
@@ -501,6 +723,7 @@ public sealed class DeviceCardViewModel : ObservableObject
 
         switch (primaryDomain)
         {
+            case "light_group":
             case "light":
                 var memberChips = BuildGroupedLightChips(primaryStates, roomEntities, statesByEntityId);
                 if (memberChips.Count > 0)
@@ -518,11 +741,12 @@ public sealed class DeviceCardViewModel : ObservableObject
                     break;
                 }
 
-                goto case "fan";
+                chips.Add(BuildLightStateChip(primaryStates));
+                break;
             case "fan":
                 var on = primaryStates.Count(state => state.State == "on");
                 chips.Add(on > 0
-                    ? StatusChipViewModel.Active($"{on} on", $"{on} {GetFriendlyDomainName(primaryDomain, on)} on.")
+                    ? StatusChipViewModel.Active(BuildFanStateText(primaryStates), "Fan is on.")
                     : StatusChipViewModel.Neutral("Off", $"All {GetFriendlyDomainName(primaryDomain, 2)} off."));
                 break;
             case "lock":
@@ -542,17 +766,34 @@ public sealed class DeviceCardViewModel : ObservableObject
                 chips.Add(active > 0
                     ? StatusChipViewModel.Warning($"{active} active", $"{active} sensor {Pluralize(active, "state")} active.")
                     : StatusChipViewModel.Neutral("Clear", "Sensors are inactive."));
+                chips.AddRange(BuildEnvironmentalSensorChips(states));
                 break;
             case "sensor":
                 var battery = primaryStates.FirstOrDefault(IsBatterySensor);
                 if (battery is not null && int.TryParse(battery.State, out var batteryLevel))
                 {
                     chips.Add(StatusChipViewModel.Neutral($"🔋 {batteryLevel}%", $"Battery level is {batteryLevel}%."));
-                    break;
                 }
 
-                var sensorState = primaryStates.FirstOrDefault()?.State ?? "Unknown";
-                chips.Add(StatusChipViewModel.Neutral(NormalizeState(sensorState), "Current sensor state."));
+                chips.AddRange(BuildEnvironmentalSensorChips(primaryStates));
+                if (chips.Count == 0)
+                {
+                    var sensorState = primaryStates.FirstOrDefault()?.State ?? "Unknown";
+                    chips.Add(StatusChipViewModel.Neutral(NormalizeState(sensorState), "Current sensor state."));
+                }
+                break;
+            case "control":
+                var controlBattery = states.FirstOrDefault(IsBatterySensor);
+                if (controlBattery is not null && int.TryParse(controlBattery.State, out var controlBatteryLevel))
+                {
+                    chips.Add(StatusChipViewModel.Neutral($"🔋 {controlBatteryLevel}%", $"Battery level is {controlBatteryLevel}%."));
+                }
+
+                chips.AddRange(BuildEnvironmentalSensorChips(states));
+                if (chips.Count == 0)
+                {
+                    chips.Add(StatusChipViewModel.Neutral("Ready", "Control device is available."));
+                }
                 break;
             case "climate":
                 var climate = primaryStates.FirstOrDefault();
@@ -607,6 +848,108 @@ public sealed class DeviceCardViewModel : ObservableObject
             .ToList();
     }
 
+    private static StatusChipViewModel BuildLightStateChip(IReadOnlyList<HomeAssistantEntityState> lightStates)
+    {
+        var onLight = lightStates.FirstOrDefault(state => state.State == "on");
+        if (onLight is null)
+        {
+            return StatusChipViewModel.Neutral("Off", "Light is off.");
+        }
+
+        var details = new List<string>();
+        if (TryGetBrightnessPercent(onLight) is { } brightness)
+        {
+            details.Add($"{brightness}%");
+        }
+
+        if (TryGetColorTemperature(onLight) is { } kelvin)
+        {
+            details.Add($"{kelvin}K");
+        }
+        else if (TryGetRgbColorDescription(onLight) is { } color)
+        {
+            details.Add(color);
+        }
+
+        return StatusChipViewModel.Active(
+            details.Count == 0 ? "On" : $"On · {string.Join(" · ", details)}",
+            "Light is on.");
+    }
+
+    private static string BuildFanStateText(IReadOnlyList<HomeAssistantEntityState> fanStates)
+    {
+        var onFan = fanStates.FirstOrDefault(state => state.State == "on");
+        if (onFan is null)
+        {
+            return "Off";
+        }
+
+        if (TryGetIntAttribute(onFan, "percentage") is { } percentage)
+        {
+            return $"On · {percentage}%";
+        }
+
+        if (TryGetAttributeString(onFan, "preset_mode") is { } presetMode)
+        {
+            return $"On · {NormalizeState(presetMode)}";
+        }
+
+        return "On";
+    }
+
+    private static IReadOnlyList<StatusChipViewModel> BuildEnvironmentalSensorChips(IReadOnlyList<HomeAssistantEntityState> states)
+    {
+        var chips = new List<StatusChipViewModel>();
+        var temperature = states.FirstOrDefault(state => IsSensorDeviceClass(state, "temperature"));
+        if (temperature is not null)
+        {
+            chips.Add(StatusChipViewModel.Neutral(
+                $"{FormatSensorValue(temperature)}",
+                "Current temperature."));
+        }
+
+        var humidity = states.FirstOrDefault(state => IsSensorDeviceClass(state, "humidity"));
+        if (humidity is not null)
+        {
+            chips.Add(StatusChipViewModel.Neutral(
+                $"{FormatSensorValue(humidity)}",
+                "Current humidity."));
+        }
+
+        return chips;
+    }
+
+    private static bool IsSensorDeviceClass(HomeAssistantEntityState state, string deviceClass)
+    {
+        return GetDomain(state.EntityId) == "sensor"
+            && string.Equals(TryGetAttributeString(state, "device_class"), deviceClass, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string FormatSensorValue(HomeAssistantEntityState state)
+    {
+        var unit = TryGetAttributeString(state, "unit_of_measurement");
+        return string.IsNullOrWhiteSpace(unit) ? NormalizeState(state.State) : $"{state.State}{unit}";
+    }
+
+    private static string? TryGetRgbColorDescription(HomeAssistantEntityState state)
+    {
+        if (state.Attributes.ValueKind != JsonValueKind.Object ||
+            !state.Attributes.TryGetProperty("rgb_color", out var rgb) ||
+            rgb.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        var values = rgb.EnumerateArray()
+            .Where(value => value.ValueKind == JsonValueKind.Number)
+            .Select(value => value.GetInt32())
+            .Take(3)
+            .ToArray();
+        return values.Length == 3
+            ? $"#{values[0]:X2}{values[1]:X2}{values[2]:X2}"
+            : null;
+    }
+
     private static IEnumerable<string> GetGroupedEntityIds(HomeAssistantEntityState state)
     {
         if (state.Attributes.ValueKind != JsonValueKind.Object ||
@@ -657,10 +1000,10 @@ public sealed class DeviceCardViewModel : ObservableObject
 
     private static bool IsActive(string primaryDomain, IReadOnlyList<HomeAssistantEntityState> states)
     {
-        var primaryStates = states.Where(state => GetDomain(state.EntityId) == primaryDomain).ToList();
+        var primaryStates = GetPrimaryStates(primaryDomain, states);
         return primaryDomain switch
         {
-            "light" or "fan" => primaryStates.Any(state => state.State == "on"),
+            "light" or "light_group" or "fan" => primaryStates.Any(state => state.State == "on"),
             "lock" => primaryStates.Any(state => state.State is "unlocked" or "open"),
             "media_player" => primaryStates.Any(state => state.State == "playing"),
             "binary_sensor" => primaryStates.Any(state => state.State == "on"),
@@ -725,12 +1068,20 @@ public sealed class DeviceCardViewModel : ObservableObject
 
     private static int? TryGetIntAttribute(HomeAssistantEntityState state, string attributeName)
     {
-        return state.Attributes.ValueKind == JsonValueKind.Object
-            && state.Attributes.TryGetProperty(attributeName, out var value)
-            && value.ValueKind == JsonValueKind.Number
-            && value.TryGetInt32(out var number)
-                ? number
-                : null;
+        if (state.Attributes.ValueKind != JsonValueKind.Object ||
+            !state.Attributes.TryGetProperty(attributeName, out var value))
+        {
+            return null;
+        }
+
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number))
+        {
+            return number;
+        }
+
+        return value.ValueKind == JsonValueKind.String && int.TryParse(value.GetString(), out var stringNumber)
+            ? stringNumber
+            : null;
     }
 
     private static string? TryGetAttributeString(HomeAssistantEntityState? state, string attributeName)
@@ -750,7 +1101,7 @@ public sealed class DeviceCardViewModel : ObservableObject
             return false;
         }
 
-        var primaryStates = states.Where(state => GetDomain(state.EntityId) == primaryDomain).ToList();
+        var primaryStates = GetPrimaryStates(primaryDomain, states);
         var relevantStates = primaryStates.Count > 0 ? primaryStates : states;
         return relevantStates.All(state => state.State is "unavailable" or "unknown");
     }
@@ -772,7 +1123,7 @@ public sealed class DeviceCardViewModel : ObservableObject
         IReadOnlyList<HomeAssistantEntityState> states,
         string primaryDomain)
     {
-        if (primaryDomain == "light" && TryGetLightGroupDescription(device, entities, states, out var groupDescription))
+        if (primaryDomain is "light" or "light_group" && TryGetLightGroupDescription(device, entities, states, out var groupDescription))
         {
             return groupDescription;
         }
@@ -913,11 +1264,13 @@ public sealed class DeviceCardViewModel : ObservableObject
         return domain switch
         {
             "light" => "Lights",
+            "light_group" => "Light Groups",
             "fan" => "Fans",
             "climate" => "Climate",
             "lock" => "Locks",
-            "media_player" => "Media",
+            "media_player" or "media_display" => "Media",
             "binary_sensor" or "sensor" => "Sensors",
+            "control" => "Controls",
             _ => "Other"
         };
     }
@@ -926,12 +1279,13 @@ public sealed class DeviceCardViewModel : ObservableObject
     {
         return domain switch
         {
-            "light" => "\uE706",
+            "light" or "light_group" => "\uE706",
             "fan" => "\uE9CA",
             "climate" => "\uE7A3",
             "lock" => "\uE72E",
-            "media_player" => "\uE8B2",
+            "media_player" or "media_display" => "\uE8B2",
             "binary_sensor" or "sensor" => "\uE9D9",
+            "control" => "\uE8A7",
             _ => "\uE950"
         };
     }
@@ -940,7 +1294,7 @@ public sealed class DeviceCardViewModel : ObservableObject
     {
         return domain switch
         {
-            "light" => Color.FromArgb(255, 255, 210, 96),
+            "light" or "light_group" => Color.FromArgb(255, 255, 210, 96),
             "fan" => Color.FromArgb(255, 94, 234, 212),
             "lock" or "binary_sensor" => Color.FromArgb(255, 255, 159, 67),
             _ => Color.FromArgb(255, 96, 165, 250)
@@ -962,10 +1316,18 @@ public sealed class DeviceCardViewModel : ObservableObject
     {
         return domain switch
         {
-            "light" => Pluralize(count, "light"),
+            "light" or "light_group" => Pluralize(count, "light"),
             "fan" => Pluralize(count, "fan"),
             _ => Pluralize(count, "device")
         };
+    }
+
+    private static IReadOnlyList<HomeAssistantEntityState> GetPrimaryStates(
+        string primaryDomain,
+        IReadOnlyList<HomeAssistantEntityState> states)
+    {
+        var stateDomain = primaryDomain == "light_group" ? "light" : primaryDomain;
+        return states.Where(state => GetDomain(state.EntityId) == stateDomain).ToList();
     }
 
     private static string Pluralize(int count, string noun)
