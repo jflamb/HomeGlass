@@ -4,6 +4,9 @@ using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using Windows.UI;
 
 namespace HomeGlass.Pages;
@@ -13,17 +16,24 @@ public sealed partial class RoomsPage : Page
     private CancellationTokenSource? _stateSubscriptionCts;
     private CancellationTokenSource? _refreshDebounceCts;
     private bool _isLoadingRooms;
+    private bool _hasLoadedRooms;
+    private readonly ObservableCollection<RoomGroupViewModel> _roomGroups = [];
+    private IReadOnlyList<HomeAssistantArea> _areas = [];
+    private IReadOnlyList<HomeAssistantFloor> _floors = [];
+    private IReadOnlyList<HomeAssistantDevice> _devices = [];
+    private IReadOnlyList<HomeAssistantEntityRegistryEntry> _entities = [];
 
     public RoomsPage()
     {
         InitializeComponent();
+        RoomGroupsListView.ItemsSource = _roomGroups;
         Loaded += RoomsPage_Loaded;
         Unloaded += RoomsPage_Unloaded;
     }
 
     private async void RoomsPage_Loaded(object sender, RoutedEventArgs e)
     {
-        await LoadRoomsAsync();
+        await LoadRoomsAsync(showLoadingState: true);
         StartStateSubscription();
     }
 
@@ -32,7 +42,7 @@ public sealed partial class RoomsPage : Page
         StopStateSubscription();
     }
 
-    private async Task LoadRoomsAsync()
+    private async Task LoadRoomsAsync(bool showLoadingState)
     {
         if (_isLoadingRooms)
         {
@@ -40,18 +50,28 @@ public sealed partial class RoomsPage : Page
         }
 
         _isLoadingRooms = true;
-        RoomsInfoBar.IsOpen = false;
+        if (showLoadingState)
+        {
+            RoomsInfoBar.IsOpen = false;
+        }
 
         try
         {
             if (AppServices.HomeAssistantAuth.CurrentConnection is null)
             {
-                RoomGroupsListView.ItemsSource = Array.Empty<RoomGroupViewModel>();
-                RoomsSummaryText.Text = "Connect to Home Assistant in Settings to load rooms.";
+                if (showLoadingState || !_hasLoadedRooms)
+                {
+                    _roomGroups.Clear();
+                    RoomsSummaryText.Text = "Connect to Home Assistant in Settings to load rooms.";
+                }
+
                 return;
             }
 
-            RoomsSummaryText.Text = "Loading rooms from Home Assistant...";
+            if (showLoadingState || !_hasLoadedRooms)
+            {
+                RoomsSummaryText.Text = "Loading rooms from Home Assistant...";
+            }
 
             var areasTask = AppServices.HomeAssistantWebSocket.GetAreasAsync();
             var floorsTask = TryLoadAsync(AppServices.HomeAssistantWebSocket.GetFloorsAsync);
@@ -60,19 +80,24 @@ public sealed partial class RoomsPage : Page
             var statesTask = AppServices.HomeAssistantApi.GetStatesAsync();
 
             await Task.WhenAll(areasTask, floorsTask, devicesTask, entitiesTask, statesTask);
+            _areas = areasTask.Result;
+            _floors = floorsTask.Result;
+            _devices = devicesTask.Result;
+            _entities = entitiesTask.Result;
 
             var groups = BuildRoomGroups(
-                areasTask.Result,
-                floorsTask.Result,
-                devicesTask.Result,
-                entitiesTask.Result,
+                _areas,
+                _floors,
+                _devices,
+                _entities,
                 statesTask.Result);
 
             var roomCount = groups.Sum(group => group.Rooms.Count);
-            RoomGroupsListView.ItemsSource = groups;
+            ApplyRoomGroups(groups);
             RoomsSummaryText.Text = roomCount == 1
                 ? "1 room loaded from Home Assistant."
                 : $"{roomCount} rooms loaded from Home Assistant.";
+            _hasLoadedRooms = true;
 
             if (roomCount == 0)
             {
@@ -81,9 +106,12 @@ public sealed partial class RoomsPage : Page
         }
         catch (Exception ex)
         {
-            RoomGroupsListView.ItemsSource = Array.Empty<RoomGroupViewModel>();
-            RoomsSummaryText.Text = "Rooms could not be loaded.";
-            ShowInfo(InfoBarSeverity.Error, "Home Assistant error", ex.Message);
+            if (showLoadingState || !_hasLoadedRooms)
+            {
+                _roomGroups.Clear();
+                RoomsSummaryText.Text = "Rooms could not be loaded.";
+                ShowInfo(InfoBarSeverity.Error, "Home Assistant error", ex.Message);
+            }
         }
         finally
         {
@@ -135,12 +163,70 @@ public sealed partial class RoomsPage : Page
             try
             {
                 await Task.Delay(750, token);
-                DispatcherQueue.TryEnqueue(async () => await LoadRoomsAsync());
+                DispatcherQueue.TryEnqueue(async () => await RefreshRoomStatesAsync());
             }
             catch (OperationCanceledException)
             {
             }
         }, token);
+    }
+
+    private async Task RefreshRoomStatesAsync()
+    {
+        if (_isLoadingRooms || !_hasLoadedRooms)
+        {
+            return;
+        }
+
+        _isLoadingRooms = true;
+
+        try
+        {
+            var states = await AppServices.HomeAssistantApi.GetStatesAsync();
+            var groups = BuildRoomGroups(_areas, _floors, _devices, _entities, states);
+            ApplyRoomGroups(groups);
+        }
+        catch
+        {
+            // Live refresh failures should not disturb a usable room view. The socket reconnect path will retry.
+        }
+        finally
+        {
+            _isLoadingRooms = false;
+        }
+    }
+
+    private void ApplyRoomGroups(IReadOnlyList<RoomGroupViewModel> groups)
+    {
+        for (var index = _roomGroups.Count - 1; index >= 0; index--)
+        {
+            if (!groups.Any(group => group.Name == _roomGroups[index].Name))
+            {
+                _roomGroups.RemoveAt(index);
+            }
+        }
+
+        for (var targetIndex = 0; targetIndex < groups.Count; targetIndex++)
+        {
+            var incomingGroup = groups[targetIndex];
+            var existingGroup = _roomGroups.FirstOrDefault(group => group.Name == incomingGroup.Name);
+
+            if (existingGroup is null)
+            {
+                _roomGroups.Insert(targetIndex, incomingGroup);
+            }
+            else
+            {
+                existingGroup.Summary = incomingGroup.Summary;
+                existingGroup.ApplyRooms(incomingGroup.Rooms);
+
+                var existingIndex = _roomGroups.IndexOf(existingGroup);
+                if (existingIndex != targetIndex)
+                {
+                    _roomGroups.Move(existingIndex, targetIndex);
+                }
+            }
+        }
     }
 
     private static IReadOnlyList<RoomGroupViewModel> BuildRoomGroups(
@@ -246,17 +332,156 @@ public sealed partial class RoomsPage : Page
     }
 }
 
-public sealed record RoomGroupViewModel(string Name, string Summary, IReadOnlyList<RoomCardViewModel> Rooms);
-
-public sealed record RoomCardViewModel(
-    string Name,
-    string IconGlyph,
-    IReadOnlyList<StatusChipViewModel> StatusChips,
-    Brush CardBackground,
-    Brush CardBorderBrush,
-    Thickness CardBorderThickness,
-    int DeviceCount)
+public sealed class RoomGroupViewModel : ObservableObject
 {
+    private string _summary;
+
+    public RoomGroupViewModel(string name, string summary, IReadOnlyList<RoomCardViewModel> rooms)
+    {
+        Name = name;
+        _summary = summary;
+        Rooms = new ObservableCollection<RoomCardViewModel>(rooms);
+    }
+
+    public string Name { get; }
+
+    public string Summary
+    {
+        get => _summary;
+        set => SetProperty(ref _summary, value);
+    }
+
+    public ObservableCollection<RoomCardViewModel> Rooms { get; }
+
+    public void ApplyRooms(IReadOnlyList<RoomCardViewModel> rooms)
+    {
+        for (var index = Rooms.Count - 1; index >= 0; index--)
+        {
+            if (!rooms.Any(room => room.Name == Rooms[index].Name))
+            {
+                Rooms.RemoveAt(index);
+            }
+        }
+
+        for (var targetIndex = 0; targetIndex < rooms.Count; targetIndex++)
+        {
+            var incomingRoom = rooms[targetIndex];
+            var existingRoom = Rooms.FirstOrDefault(room => room.Name == incomingRoom.Name);
+
+            if (existingRoom is null)
+            {
+                Rooms.Insert(targetIndex, incomingRoom);
+            }
+            else
+            {
+                existingRoom.Apply(incomingRoom);
+
+                var existingIndex = Rooms.IndexOf(existingRoom);
+                if (existingIndex != targetIndex)
+                {
+                    Rooms.Move(existingIndex, targetIndex);
+                }
+            }
+        }
+    }
+}
+
+public sealed class RoomCardViewModel : ObservableObject
+{
+    private string _iconGlyph;
+    private IReadOnlyList<StatusChipViewModel> _statusChips;
+    private Brush _cardBackground;
+    private Brush _cardBorderBrush;
+    private Thickness _cardBorderThickness;
+    private int _deviceCount;
+    private string _semanticKey;
+
+    public RoomCardViewModel(
+        string name,
+        string iconGlyph,
+        IReadOnlyList<StatusChipViewModel> statusChips,
+        Brush cardBackground,
+        Brush cardBorderBrush,
+        Thickness cardBorderThickness,
+        int deviceCount)
+    {
+        Name = name;
+        _iconGlyph = iconGlyph;
+        _statusChips = statusChips;
+        _cardBackground = cardBackground;
+        _cardBorderBrush = cardBorderBrush;
+        _cardBorderThickness = cardBorderThickness;
+        _deviceCount = deviceCount;
+        _semanticKey = BuildSemanticKey(statusChips, cardBorderThickness, cardBorderBrush);
+    }
+
+    public string Name { get; }
+
+    public string IconGlyph
+    {
+        get => _iconGlyph;
+        private set => SetProperty(ref _iconGlyph, value);
+    }
+
+    public IReadOnlyList<StatusChipViewModel> StatusChips
+    {
+        get => _statusChips;
+        private set => SetProperty(ref _statusChips, value);
+    }
+
+    public Brush CardBackground
+    {
+        get => _cardBackground;
+        private set => SetProperty(ref _cardBackground, value);
+    }
+
+    public Brush CardBorderBrush
+    {
+        get => _cardBorderBrush;
+        private set => SetProperty(ref _cardBorderBrush, value);
+    }
+
+    public Thickness CardBorderThickness
+    {
+        get => _cardBorderThickness;
+        private set => SetProperty(ref _cardBorderThickness, value);
+    }
+
+    public int DeviceCount
+    {
+        get => _deviceCount;
+        private set => SetProperty(ref _deviceCount, value);
+    }
+
+    public void Apply(RoomCardViewModel room)
+    {
+        if (_semanticKey == room._semanticKey)
+        {
+            return;
+        }
+
+        _semanticKey = room._semanticKey;
+        IconGlyph = room.IconGlyph;
+        StatusChips = room.StatusChips;
+        CardBackground = room.CardBackground;
+        CardBorderBrush = room.CardBorderBrush;
+        CardBorderThickness = room.CardBorderThickness;
+        DeviceCount = room.DeviceCount;
+    }
+
+    private static string BuildSemanticKey(
+        IReadOnlyList<StatusChipViewModel> chips,
+        Thickness borderThickness,
+        Brush borderBrush)
+    {
+        var chipKey = string.Join("|", chips.Select(chip => $"{chip.Text}:{chip.Kind}"));
+        var brushKey = borderBrush is SolidColorBrush solidColorBrush
+            ? solidColorBrush.Color.ToString()
+            : borderBrush.GetHashCode().ToString();
+
+        return $"{chipKey};{borderThickness.Left};{brushKey}";
+    }
+
     public static RoomCardViewModel FromArea(
         HomeAssistantArea area,
         IReadOnlyList<HomeAssistantDevice> devices,
@@ -647,7 +872,8 @@ public sealed record StatusChipViewModel(
     string Text,
     Brush Background,
     Brush Foreground,
-    bool IsEmphasized)
+    bool IsEmphasized,
+    string Kind)
 {
     public static StatusChipViewModel Neutral(string text)
     {
@@ -655,7 +881,8 @@ public sealed record StatusChipViewModel(
             text,
             new SolidColorBrush(Color.FromArgb(255, 62, 62, 62)),
             new SolidColorBrush(Colors.White),
-            false);
+            false,
+            "neutral");
     }
 
     public static StatusChipViewModel Active(string text)
@@ -664,7 +891,8 @@ public sealed record StatusChipViewModel(
             text,
             new SolidColorBrush(Color.FromArgb(255, 255, 214, 102)),
             new SolidColorBrush(Color.FromArgb(255, 36, 28, 0)),
-            true);
+            true,
+            "active");
     }
 
     public static StatusChipViewModel Warning(string text)
@@ -673,6 +901,23 @@ public sealed record StatusChipViewModel(
             text,
             new SolidColorBrush(Color.FromArgb(255, 255, 159, 67)),
             new SolidColorBrush(Color.FromArgb(255, 40, 20, 0)),
-            true);
+            true,
+            "warning");
+    }
+}
+
+public abstract class ObservableObject : INotifyPropertyChanged
+{
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    protected void SetProperty<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
+    {
+        if (EqualityComparer<T>.Default.Equals(field, value))
+        {
+            return;
+        }
+
+        field = value;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 }
