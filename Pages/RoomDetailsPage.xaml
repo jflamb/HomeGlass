@@ -77,22 +77,14 @@
                                                             <TextBlock Text="{Binding ControlSummary}" TextWrapping="Wrap" />
                                                         </StackPanel>
 
-                                                        <StackPanel Orientation="Horizontal" Spacing="8">
-                                                            <Button
-                                                                Click="SetDevicePowerButton_Click"
-                                                                CommandParameter="{Binding}"
-                                                                IsEnabled="{Binding IsEnabled}"
-                                                                Tag="turn_on">
-                                                                <TextBlock Text="On" />
-                                                            </Button>
-                                                            <Button
-                                                                Click="SetDevicePowerButton_Click"
-                                                                CommandParameter="{Binding}"
-                                                                IsEnabled="{Binding IsEnabled}"
-                                                                Tag="turn_off">
-                                                                <TextBlock Text="Off" />
-                                                            </Button>
-                                                        </StackPanel>
+                                                        <ToggleSwitch
+                                                            Header="Power"
+                                                            IsEnabled="{Binding IsEnabled}"
+                                                            IsOn="{Binding IsOn, Mode=OneWay}"
+                                                            OffContent="Off"
+                                                            OnContent="On"
+                                                            Tag="{Binding}"
+                                                            Toggled="PowerToggleSwitch_Toggled" />
 
                                                         <StackPanel Spacing="6" Visibility="{Binding BrightnessVisibility}">
                                                             <TextBlock Text="{Binding BrightnessLabel}" />

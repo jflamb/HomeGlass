@@ -128,14 +128,16 @@ public sealed partial class RoomDetailsPage : Page
         return null;
     }
 
-    private async void SetDevicePowerButton_Click(object sender, RoutedEventArgs e)
+    private async void PowerToggleSwitch_Toggled(object sender, RoutedEventArgs e)
     {
-        if (sender is not Button { CommandParameter: DeviceCardViewModel device, Tag: string service })
+        if (sender is not ToggleSwitch { Tag: DeviceCardViewModel device } toggleSwitch ||
+            !toggleSwitch.IsLoaded ||
+            toggleSwitch.IsOn == device.IsOn)
         {
             return;
         }
 
-        await CallDeviceServiceAsync(device, service);
+        await CallDeviceServiceAsync(device, toggleSwitch.IsOn ? "turn_on" : "turn_off");
     }
 
     private async void ApplyLightControlsButton_Click(object sender, RoutedEventArgs e)
@@ -216,8 +218,10 @@ public sealed partial class RoomDetailsPage : Page
                 service,
                 payload ?? new { entity_id = device.PrimaryEntityId });
 
+            device.ApplyOptimisticPowerState(service);
             if (_room is not null)
             {
+                await Task.Delay(350);
                 await RefreshDeviceStatesAsync(_room);
             }
         }
@@ -373,7 +377,7 @@ public sealed class DeviceGroupViewModel : ObservableObject
             else
             {
                 var existingIndex = Devices.IndexOf(existingDevice);
-                Devices[existingIndex] = incomingDevice;
+                existingDevice.ApplyFrom(incomingDevice);
                 if (existingIndex != targetIndex)
                 {
                     Devices.Move(existingIndex, targetIndex);
@@ -395,9 +399,19 @@ public sealed record LightFeatureSet(
 
 public sealed class DeviceCardViewModel : ObservableObject
 {
+    private string _name;
+    private string _detail;
+    private string _type;
+    private string _iconGlyph;
+    private IReadOnlyList<StatusChipViewModel> _statusChips;
+    private Brush _cardBackground;
+    private Brush _cardBorderBrush;
+    private Thickness _cardBorderThickness;
+    private double _cardOpacity;
     private bool _isBusy;
     private double _brightnessPercent;
     private double _colorTemperatureKelvin;
+    private bool _isOn;
 
     private DeviceCardViewModel(
         string key,
@@ -423,15 +437,15 @@ public sealed class DeviceCardViewModel : ObservableObject
         bool isOn)
     {
         Key = key;
-        Name = name;
-        Detail = detail;
-        Type = type;
-        IconGlyph = iconGlyph;
-        StatusChips = statusChips;
-        CardBackground = cardBackground;
-        CardBorderBrush = cardBorderBrush;
-        CardBorderThickness = cardBorderThickness;
-        CardOpacity = cardOpacity;
+        _name = name;
+        _detail = detail;
+        _type = type;
+        _iconGlyph = iconGlyph;
+        _statusChips = statusChips;
+        _cardBackground = cardBackground;
+        _cardBorderBrush = cardBorderBrush;
+        _cardBorderThickness = cardBorderThickness;
+        _cardOpacity = cardOpacity;
         PrimaryDomain = primaryDomain;
         PrimaryEntityId = primaryEntityId;
         IsControllable = isControllable;
@@ -442,28 +456,64 @@ public sealed class DeviceCardViewModel : ObservableObject
         _colorTemperatureKelvin = colorTemperatureKelvin;
         MinColorTemperatureKelvin = minColorTemperatureKelvin;
         MaxColorTemperatureKelvin = maxColorTemperatureKelvin;
-        IsOn = isOn;
+        _isOn = isOn;
     }
 
     public string Key { get; }
 
-    public string Name { get; }
+    public string Name
+    {
+        get => _name;
+        private set => SetProperty(ref _name, value);
+    }
 
-    public string Detail { get; }
+    public string Detail
+    {
+        get => _detail;
+        private set => SetProperty(ref _detail, value);
+    }
 
-    public string Type { get; }
+    public string Type
+    {
+        get => _type;
+        private set => SetProperty(ref _type, value);
+    }
 
-    public string IconGlyph { get; }
+    public string IconGlyph
+    {
+        get => _iconGlyph;
+        private set => SetProperty(ref _iconGlyph, value);
+    }
 
-    public IReadOnlyList<StatusChipViewModel> StatusChips { get; }
+    public IReadOnlyList<StatusChipViewModel> StatusChips
+    {
+        get => _statusChips;
+        private set => SetProperty(ref _statusChips, value);
+    }
 
-    public Brush CardBackground { get; }
+    public Brush CardBackground
+    {
+        get => _cardBackground;
+        private set => SetProperty(ref _cardBackground, value);
+    }
 
-    public Brush CardBorderBrush { get; }
+    public Brush CardBorderBrush
+    {
+        get => _cardBorderBrush;
+        private set => SetProperty(ref _cardBorderBrush, value);
+    }
 
-    public Thickness CardBorderThickness { get; }
+    public Thickness CardBorderThickness
+    {
+        get => _cardBorderThickness;
+        private set => SetProperty(ref _cardBorderThickness, value);
+    }
 
-    public double CardOpacity { get; }
+    public double CardOpacity
+    {
+        get => _cardOpacity;
+        private set => SetProperty(ref _cardOpacity, value);
+    }
 
     public string PrimaryDomain { get; }
 
@@ -481,7 +531,15 @@ public sealed class DeviceCardViewModel : ObservableObject
 
     public int MaxColorTemperatureKelvin { get; }
 
-    public bool IsOn { get; }
+    public bool IsOn
+    {
+        get => _isOn;
+        private set
+        {
+            SetProperty(ref _isOn, value);
+            OnPropertyChanged(nameof(ToggleToolTip));
+        }
+    }
 
     public bool IsBusy
     {
@@ -553,6 +611,38 @@ public sealed class DeviceCardViewModel : ObservableObject
     }
 
     public string ColorTemperatureLabel => $"Color temperature {Math.Round(ColorTemperatureKelvin)}K";
+
+    public void ApplyFrom(DeviceCardViewModel incomingDevice)
+    {
+        Name = incomingDevice.Name;
+        Detail = incomingDevice.Detail;
+        Type = incomingDevice.Type;
+        IconGlyph = incomingDevice.IconGlyph;
+        StatusChips = incomingDevice.StatusChips;
+        CardBackground = incomingDevice.CardBackground;
+        CardBorderBrush = incomingDevice.CardBorderBrush;
+        CardBorderThickness = incomingDevice.CardBorderThickness;
+        CardOpacity = incomingDevice.CardOpacity;
+        BrightnessPercent = incomingDevice.BrightnessPercent;
+        ColorTemperatureKelvin = incomingDevice.ColorTemperatureKelvin;
+        IsOn = incomingDevice.IsOn;
+    }
+
+    public void ApplyOptimisticPowerState(string service)
+    {
+        switch (service)
+        {
+            case "turn_on":
+                IsOn = true;
+                break;
+            case "turn_off":
+                IsOn = false;
+                break;
+            case "toggle":
+                IsOn = !IsOn;
+                break;
+        }
+    }
 
     public static DeviceCardViewModel FromDevice(
         HomeAssistantDevice device,
