@@ -246,6 +246,7 @@ public sealed partial class RoomDetailsPage : Page
             return;
         }
 
+        var expectedState = GetExpectedPowerState(device, service);
         device.IsBusy = true;
 
         try
@@ -255,11 +256,12 @@ public sealed partial class RoomDetailsPage : Page
                 service,
                 payload ?? new { entity_id = device.PrimaryEntityId });
 
-            device.ApplyOptimisticPowerState(service);
             if (_room is not null)
             {
-                await Task.Delay(350);
-                await RefreshDeviceStatesAsync(_room);
+                var states = expectedState is null
+                    ? await AppServices.HomeAssistantApi.GetStatesAsync()
+                    : await WaitForDeviceStateAsync(device, expectedState);
+                RefreshDeviceStates(_room, states);
             }
         }
         catch
@@ -272,9 +274,69 @@ public sealed partial class RoomDetailsPage : Page
         }
     }
 
+    private async Task<IReadOnlyList<HomeAssistantEntityState>> WaitForDeviceStateAsync(
+        DeviceCardViewModel device,
+        string expectedState)
+    {
+        IReadOnlyList<HomeAssistantEntityState> latestStates = [];
+
+        for (var attempt = 0; attempt < 12; attempt++)
+        {
+            latestStates = await AppServices.HomeAssistantApi.GetStatesAsync();
+            if (HasReachedExpectedState(device, latestStates, expectedState))
+            {
+                return latestStates;
+            }
+
+            await Task.Delay(250);
+        }
+
+        return latestStates.Count > 0
+            ? latestStates
+            : await AppServices.HomeAssistantApi.GetStatesAsync();
+    }
+
+    private static bool HasReachedExpectedState(
+        DeviceCardViewModel device,
+        IReadOnlyList<HomeAssistantEntityState> states,
+        string expectedState)
+    {
+        if (device.MemberEntityIds.Count > 0)
+        {
+            var memberEntityIds = device.MemberEntityIds.ToHashSet(StringComparer.Ordinal);
+            var memberStates = states
+                .Where(state => memberEntityIds.Contains(state.EntityId))
+                .Where(state => state.State is not "unavailable" and not "unknown")
+                .ToList();
+
+            return memberStates.Count > 0 &&
+                memberStates.All(state => string.Equals(state.State, expectedState, StringComparison.Ordinal));
+        }
+
+        return states.Any(state =>
+            string.Equals(state.EntityId, device.PrimaryEntityId, StringComparison.Ordinal) &&
+            string.Equals(state.State, expectedState, StringComparison.Ordinal));
+    }
+
+    private static string? GetExpectedPowerState(DeviceCardViewModel device, string service)
+    {
+        return service switch
+        {
+            "turn_on" => "on",
+            "turn_off" => "off",
+            "toggle" => device.IsOn ? "off" : "on",
+            _ => null
+        };
+    }
+
     private async Task RefreshDeviceStatesAsync(RoomCardViewModel room)
     {
         var states = await AppServices.HomeAssistantApi.GetStatesAsync();
+        RefreshDeviceStates(room, states);
+    }
+
+    private void RefreshDeviceStates(RoomCardViewModel room, IReadOnlyList<HomeAssistantEntityState> states)
+    {
         var groups = BuildDeviceGroups(room.AreaId, room.Name, _devices, _entities, states);
         ApplyDeviceGroups(groups);
     }
@@ -825,19 +887,27 @@ public sealed class DeviceCardViewModel : ObservableObject
             ? GetLightGroupPrimaryState(primaryStates, entities)
             : primaryStates.FirstOrDefault(state => state.State == "on") ?? primaryStates.FirstOrDefault();
         var unavailable = IsUnavailable(primaryDomain, states);
-        var active = !unavailable && IsActive(primaryDomain, states);
+        var memberEntityIds = isLightGroup
+            ? GetGroupMemberEntityIds(primaryStates, groupEntity: null, roomEntities)
+            : [];
+        var memberStates = memberEntityIds
+            .Select(entityId => statesByEntityId.TryGetValue(entityId, out var state) ? state : null)
+            .OfType<HomeAssistantEntityState>()
+            .Where(state => state.State is not "unavailable" and not "unknown")
+            .ToList();
+        var active = !unavailable && isLightGroup && memberStates.Count > 0
+            ? memberStates.Any(state => state.State == "on")
+            : !unavailable && IsActive(primaryDomain, states);
         var chips = BuildStatusChips(primaryDomain, states, roomEntities, statesByEntityId, isLightGroup);
         var accent = active ? GetAccent(primaryDomain) : Colors.Transparent;
         var isControllable = !unavailable
             && primaryState is not null
             && serviceDomain is "light" or "fan";
         var lightFeatures = GetLightFeatures(primaryStates);
-        var memberEntityIds = isLightGroup
-            ? GetGroupMemberEntityIds(primaryStates, groupEntity: null, roomEntities)
-            : [];
         var members = memberEntityIds
             .Select(entityId => FromLightMemberEntity(entityId, roomName, roomEntities, statesByEntityId))
             .OfType<DeviceCardViewModel>()
+            .OrderBy(member => member.Name, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
 
         return new DeviceCardViewModel(
@@ -881,15 +951,23 @@ public sealed class DeviceCardViewModel : ObservableObject
             : null;
         var states = state is null ? [] : new[] { state };
         var unavailable = state is null || state.State is "unavailable" or "unknown";
-        var active = state?.State == "on";
+        var memberEntityIds = GetGroupMemberEntityIds(states, entity, roomEntities);
+        var memberStates = memberEntityIds
+            .Select(entityId => statesByEntityId.TryGetValue(entityId, out var memberState) ? memberState : null)
+            .OfType<HomeAssistantEntityState>()
+            .Where(memberState => memberState.State is not "unavailable" and not "unknown")
+            .ToList();
+        var active = memberStates.Count > 0
+            ? memberStates.Any(memberState => memberState.State == "on")
+            : state?.State == "on";
         var chips = BuildStatusChips("light_group", states, roomEntities, statesByEntityId, isLightGroup: true);
         var accent = active ? GetAccent("light_group") : Colors.Transparent;
         var lightFeatures = GetLightFeatures(states);
         var name = TrimRoomPrefix(GetEntityDisplayName(entity, state), roomName);
-        var memberEntityIds = GetGroupMemberEntityIds(states, entity, roomEntities);
         var members = memberEntityIds
             .Select(entityId => FromLightMemberEntity(entityId, roomName, roomEntities, statesByEntityId))
             .OfType<DeviceCardViewModel>()
+            .OrderBy(member => member.Name, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
 
         return new DeviceCardViewModel(

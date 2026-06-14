@@ -51,14 +51,23 @@
 
                 <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
                     <StackPanel Spacing="18">
-                        <ToggleSwitch
-                            Header="Power"
-                            IsEnabled="{Binding IsEnabled}"
-                            IsOn="{Binding IsOn, Mode=OneWay}"
-                            OffContent="Off"
-                            OnContent="On"
-                            Tag="{Binding}"
-                            Toggled="PowerToggleSwitch_Toggled" />
+                        <StackPanel Spacing="8">
+                            <ToggleSwitch
+                                Header="Power"
+                                IsEnabled="{Binding IsEnabled}"
+                                IsOn="{Binding IsOn, Mode=OneWay}"
+                                OffContent="Off"
+                                OnContent="On"
+                                Tag="{Binding}"
+                                Toggled="PowerToggleSwitch_Toggled" />
+                            <StackPanel Orientation="Horizontal" Spacing="8" Visibility="{Binding BusyVisibility}">
+                                <ProgressRing
+                                    Width="16"
+                                    Height="16"
+                                    IsActive="{Binding IsBusy}" />
+                                <TextBlock VerticalAlignment="Center" Text="Waiting for Home Assistant..." />
+                            </StackPanel>
+                        </StackPanel>
 
                         <StackPanel Spacing="6" Visibility="{Binding BrightnessVisibility}">
                             <TextBlock Text="{Binding BrightnessLabel}" />
