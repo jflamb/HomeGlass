@@ -50,9 +50,9 @@
                                         Width="260"
                                         MinHeight="164"
                                         Padding="18"
-                                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                        BorderThickness="1"
+                                        Background="{Binding CardBackground}"
+                                        BorderBrush="{Binding CardBorderBrush}"
+                                        BorderThickness="{Binding CardBorderThickness}"
                                         CornerRadius="8">
                                         <StackPanel Spacing="10">
                                             <Grid ColumnSpacing="10">
@@ -79,15 +79,15 @@
                                                         <Border
                                                             Margin="0,0,6,6"
                                                             Padding="8,4"
-                                                            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                                            Background="{Binding Background}"
                                                             CornerRadius="8">
-                                                            <TextBlock FontSize="12" Text="{Binding}" />
+                                                            <TextBlock FontSize="12" FontWeight="SemiBold" Foreground="{Binding Foreground}" Text="{Binding Text}" />
                                                         </Border>
                                                     </DataTemplate>
                                                 </ItemsControl.ItemTemplate>
                                                 <ItemsControl.ItemsPanel>
                                                     <ItemsPanelTemplate>
-                                                        <StackPanel Orientation="Horizontal" />
+                                                        <VariableSizedWrapGrid Orientation="Horizontal" />
                                                     </ItemsPanelTemplate>
                                                 </ItemsControl.ItemsPanel>
                                             </ItemsControl>
