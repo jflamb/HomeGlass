@@ -615,12 +615,43 @@ public sealed class RoomCardViewModel : ObservableObject
         }
 
         var searchableName = $"{entity.Entity.Name} {entity.Entity.OriginalName} {entity.State.EntityId}";
-        if (ContainsAny(searchableName, "rgb indicator", "indicator", "status", "notification", "led"))
+        if (ContainsAny(searchableName, "rgb indicator", "indicator", "status", "notification", "led", " load ", ".load", "_load"))
+        {
+            return false;
+        }
+
+        if (IsLikelyAggregateLight(entity, searchableName))
         {
             return false;
         }
 
         return true;
+    }
+
+    private static bool IsLikelyAggregateLight(RoomEntityState entity, string searchableName)
+    {
+        var friendlyName = GetFriendlyName(entity.State);
+        var normalizedEntityName = NormalizeEntityName(entity.State.EntityId);
+        var names = new[]
+        {
+            entity.Entity.Name,
+            entity.Entity.OriginalName,
+            friendlyName,
+            normalizedEntityName
+        }.Where(name => !string.IsNullOrWhiteSpace(name)).ToArray();
+
+        if (names.Any(name => name!.EndsWith(" lights", StringComparison.CurrentCultureIgnoreCase)))
+        {
+            return true;
+        }
+
+        if (names.Any(name => name!.EndsWith(" light", StringComparison.CurrentCultureIgnoreCase)) &&
+            !ContainsAny(searchableName, " top ", " bottom ", " left ", " right ", " upper ", " lower ", " can ", " lamp ", " strip ", " pendant ", " sconce "))
+        {
+            return true;
+        }
+
+        return false;
     }
 
     private static string? BuildClimateChip(IReadOnlyList<RoomEntityState> entities)
@@ -722,6 +753,20 @@ public sealed class RoomCardViewModel : ObservableObject
     private static string NormalizeState(string state)
     {
         return state.Replace('_', ' ');
+    }
+
+    private static string? GetFriendlyName(HomeAssistantEntityState state)
+    {
+        return state.Attributes.TryGetProperty("friendly_name", out var friendlyName)
+            ? friendlyName.GetString()
+            : null;
+    }
+
+    private static string NormalizeEntityName(string entityId)
+    {
+        var separatorIndex = entityId.IndexOf('.');
+        var name = separatorIndex >= 0 ? entityId[(separatorIndex + 1)..] : entityId;
+        return name.Replace('_', ' ');
     }
 
     private static string BuildLightDetail(IReadOnlyList<HomeAssistantEntityState> lightsOn)
