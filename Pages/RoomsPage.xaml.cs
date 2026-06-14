@@ -171,6 +171,35 @@ public sealed partial class RoomsPage : Page
         }, token);
     }
 
+    private void RoomGridView_ItemClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is RoomCardViewModel room)
+        {
+            Frame.Navigate(typeof(RoomDetailsPage), room);
+        }
+    }
+
+    private async void QuickActionButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { CommandParameter: RoomQuickActionViewModel action })
+        {
+            return;
+        }
+
+        try
+        {
+            await AppServices.HomeAssistantApi.CallServiceAsync(
+                action.Domain,
+                action.Service,
+                new { area_id = action.AreaId });
+            QueueRoomsRefresh();
+        }
+        catch (Exception ex)
+        {
+            ShowInfo(InfoBarSeverity.Error, "Home Assistant error", ex.Message);
+        }
+    }
+
     private async Task RefreshRoomStatesAsync()
     {
         if (_isLoadingRooms || !_hasLoadedRooms)
@@ -388,6 +417,9 @@ public sealed class RoomGroupViewModel : ObservableObject
 
 public sealed class RoomCardViewModel : ObservableObject
 {
+    private RoomQuickActionViewModel _lightAction;
+    private RoomQuickActionViewModel _fanAction;
+    private RoomQuickActionViewModel _lockAction;
     private string _iconGlyph;
     private IReadOnlyList<StatusChipViewModel> _statusChips;
     private Brush _cardBackground;
@@ -398,24 +430,34 @@ public sealed class RoomCardViewModel : ObservableObject
 
     public RoomCardViewModel(
         string name,
+        string areaId,
         string iconGlyph,
         IReadOnlyList<StatusChipViewModel> statusChips,
         Brush cardBackground,
         Brush cardBorderBrush,
         Thickness cardBorderThickness,
+        RoomQuickActionViewModel lightAction,
+        RoomQuickActionViewModel fanAction,
+        RoomQuickActionViewModel lockAction,
         int deviceCount)
     {
         Name = name;
+        AreaId = areaId;
         _iconGlyph = iconGlyph;
         _statusChips = statusChips;
         _cardBackground = cardBackground;
         _cardBorderBrush = cardBorderBrush;
         _cardBorderThickness = cardBorderThickness;
+        _lightAction = lightAction;
+        _fanAction = fanAction;
+        _lockAction = lockAction;
         _deviceCount = deviceCount;
         _semanticKey = BuildSemanticKey(statusChips, cardBorderThickness, cardBorderBrush);
     }
 
     public string Name { get; }
+
+    public string AreaId { get; }
 
     public string IconGlyph
     {
@@ -453,6 +495,31 @@ public sealed class RoomCardViewModel : ObservableObject
         private set => SetProperty(ref _deviceCount, value);
     }
 
+    public RoomQuickActionViewModel LightAction
+    {
+        get => _lightAction;
+        private set => SetProperty(ref _lightAction, value);
+    }
+
+    public RoomQuickActionViewModel FanAction
+    {
+        get => _fanAction;
+        private set => SetProperty(ref _fanAction, value);
+    }
+
+    public RoomQuickActionViewModel LockAction
+    {
+        get => _lockAction;
+        private set => SetProperty(ref _lockAction, value);
+    }
+
+    public Visibility HasQuickActions =>
+        LightAction.Visibility == Visibility.Visible ||
+        FanAction.Visibility == Visibility.Visible ||
+        LockAction.Visibility == Visibility.Visible
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
     public void Apply(RoomCardViewModel room)
     {
         if (_semanticKey == room._semanticKey)
@@ -466,7 +533,11 @@ public sealed class RoomCardViewModel : ObservableObject
         CardBackground = room.CardBackground;
         CardBorderBrush = room.CardBorderBrush;
         CardBorderThickness = room.CardBorderThickness;
+        LightAction = room.LightAction;
+        FanAction = room.FanAction;
+        LockAction = room.LockAction;
         DeviceCount = room.DeviceCount;
+        OnPropertyChanged(nameof(HasQuickActions));
     }
 
     private static string BuildSemanticKey(
@@ -495,21 +566,26 @@ public sealed class RoomCardViewModel : ObservableObject
             .OfType<RoomEntityState>()
             .ToList();
 
-        var status = BuildStatus(availableEntities, devices.Count);
+        var status = BuildStatus(availableEntities, devices.Count, area.AreaId);
 
         return new RoomCardViewModel(
             area.Name,
+            area.AreaId,
             GetIconGlyph(area.Icon),
             status.Chips,
             status.CardBackground,
             status.CardBorderBrush,
             status.CardBorderThickness,
+            status.LightAction,
+            status.FanAction,
+            status.LockAction,
             devices.Count);
     }
 
     private static RoomStatusViewModel BuildStatus(
         IReadOnlyList<RoomEntityState> entities,
-        int deviceCount)
+        int deviceCount,
+        string areaId)
     {
         var chips = new List<StatusChipViewModel>();
         var accentColor = Colors.Transparent;
@@ -590,14 +666,58 @@ public sealed class RoomCardViewModel : ObservableObject
 
         if (chips.Count == 0)
         {
-            chips.Add(deviceCount > 0
-                ? StatusChipViewModel.Neutral("No summary", "This room has devices, but none match the room summary categories yet.")
-                : StatusChipViewModel.Neutral("Empty", "Home Assistant has no devices assigned to this room."));
+            if (deviceCount == 0)
+            {
+                chips.Add(StatusChipViewModel.Neutral("Empty", "Home Assistant has no devices assigned to this room."));
+            }
         }
 
+        var lockStates = entities.Select(entity => entity.State).Where(state => GetDomain(state.EntityId) == "lock").ToList();
+        var unlocked = lockStates.Any(state => state.State is "unlocked" or "open");
+
         return hasAccent
-            ? RoomStatusViewModel.Highlighted(chips, accentColor)
-            : RoomStatusViewModel.Neutral(chips);
+            ? RoomStatusViewModel.Highlighted(
+                chips,
+                accentColor,
+                BuildLightAction(areaId, lightStates.Count, lightsOn),
+                BuildFanAction(areaId, fans.Count, fansOn),
+                BuildLockAction(areaId, unlocked))
+            : RoomStatusViewModel.Neutral(
+                chips,
+                BuildLightAction(areaId, lightStates.Count, lightsOn),
+                BuildFanAction(areaId, fans.Count, fansOn),
+                BuildLockAction(areaId, unlocked));
+    }
+
+    private static RoomQuickActionViewModel BuildLightAction(string areaId, int lightCount, int lightsOn)
+    {
+        if (lightCount == 0)
+        {
+            return RoomQuickActionViewModel.Hidden;
+        }
+
+        return lightsOn > 0
+            ? RoomQuickActionViewModel.Visible(areaId, "light", "turn_off", "Turn off room lights")
+            : RoomQuickActionViewModel.Visible(areaId, "light", "turn_on", "Turn on room lights");
+    }
+
+    private static RoomQuickActionViewModel BuildFanAction(string areaId, int fanCount, int fansOn)
+    {
+        if (fanCount == 0)
+        {
+            return RoomQuickActionViewModel.Hidden;
+        }
+
+        return fansOn > 0
+            ? RoomQuickActionViewModel.Visible(areaId, "fan", "turn_off", "Turn off room fans")
+            : RoomQuickActionViewModel.Visible(areaId, "fan", "turn_on", "Turn on room fans");
+    }
+
+    private static RoomQuickActionViewModel BuildLockAction(string areaId, bool unlocked)
+    {
+        return unlocked
+            ? RoomQuickActionViewModel.Visible(areaId, "lock", "lock", "Lock room locks")
+            : RoomQuickActionViewModel.Hidden;
     }
 
     private static string GetDomain(string entityId)
@@ -919,24 +1039,57 @@ public sealed record RoomStatusViewModel(
     IReadOnlyList<StatusChipViewModel> Chips,
     Brush CardBackground,
     Brush CardBorderBrush,
-    Thickness CardBorderThickness)
+    Thickness CardBorderThickness,
+    RoomQuickActionViewModel LightAction,
+    RoomQuickActionViewModel FanAction,
+    RoomQuickActionViewModel LockAction)
 {
-    public static RoomStatusViewModel Neutral(IReadOnlyList<StatusChipViewModel> chips)
+    public static RoomStatusViewModel Neutral(
+        IReadOnlyList<StatusChipViewModel> chips,
+        RoomQuickActionViewModel lightAction,
+        RoomQuickActionViewModel fanAction,
+        RoomQuickActionViewModel lockAction)
     {
         return new RoomStatusViewModel(
             chips,
             new SolidColorBrush(Color.FromArgb(255, 48, 48, 48)),
             new SolidColorBrush(Color.FromArgb(255, 58, 58, 58)),
-            new Thickness(1));
+            new Thickness(1),
+            lightAction,
+            fanAction,
+            lockAction);
     }
 
-    public static RoomStatusViewModel Highlighted(IReadOnlyList<StatusChipViewModel> chips, Color accent)
+    public static RoomStatusViewModel Highlighted(
+        IReadOnlyList<StatusChipViewModel> chips,
+        Color accent,
+        RoomQuickActionViewModel lightAction,
+        RoomQuickActionViewModel fanAction,
+        RoomQuickActionViewModel lockAction)
     {
         return new RoomStatusViewModel(
             chips,
             new SolidColorBrush(Color.FromArgb(44, accent.R, accent.G, accent.B)),
             new SolidColorBrush(Color.FromArgb(220, accent.R, accent.G, accent.B)),
-            new Thickness(2));
+            new Thickness(2),
+            lightAction,
+            fanAction,
+            lockAction);
+    }
+}
+
+public sealed record RoomQuickActionViewModel(
+    string AreaId,
+    string Domain,
+    string Service,
+    string ToolTip,
+    Visibility Visibility)
+{
+    public static RoomQuickActionViewModel Hidden { get; } = new(string.Empty, string.Empty, string.Empty, string.Empty, Visibility.Collapsed);
+
+    public static RoomQuickActionViewModel Visible(string areaId, string domain, string service, string toolTip)
+    {
+        return new RoomQuickActionViewModel(areaId, domain, service, toolTip, Visibility.Visible);
     }
 }
 
@@ -994,6 +1147,11 @@ public abstract class ObservableObject : INotifyPropertyChanged
         }
 
         field = value;
+        OnPropertyChanged(propertyName);
+    }
+
+    protected void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+    {
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 }

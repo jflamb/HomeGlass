@@ -41,7 +41,8 @@
                         </StackPanel>
 
                         <GridView
-                            IsItemClickEnabled="False"
+                            ItemClick="RoomGridView_ItemClick"
+                            IsItemClickEnabled="True"
                             ItemsSource="{Binding Rooms}"
                             SelectionMode="None">
                             <GridView.ItemTemplate>
@@ -74,6 +75,7 @@
                                             </Grid>
 
                                             <ItemsControl ItemsSource="{Binding StatusChips}">
+                                                <ItemsControl.HorizontalAlignment>Left</ItemsControl.HorizontalAlignment>
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate>
                                                         <Border
@@ -92,6 +94,42 @@
                                                     </ItemsPanelTemplate>
                                                 </ItemsControl.ItemsPanel>
                                             </ItemsControl>
+
+                                            <StackPanel
+                                                Orientation="Horizontal"
+                                                Spacing="6"
+                                                Visibility="{Binding HasQuickActions}">
+                                                <Button
+                                                    Width="32"
+                                                    Height="32"
+                                                    Padding="0"
+                                                    Click="QuickActionButton_Click"
+                                                    CommandParameter="{Binding LightAction}"
+                                                    ToolTipService.ToolTip="{Binding LightAction.ToolTip}"
+                                                    Visibility="{Binding LightAction.Visibility}">
+                                                    <FontIcon FontSize="14" Glyph="&#xE706;" />
+                                                </Button>
+                                                <Button
+                                                    Width="32"
+                                                    Height="32"
+                                                    Padding="0"
+                                                    Click="QuickActionButton_Click"
+                                                    CommandParameter="{Binding FanAction}"
+                                                    ToolTipService.ToolTip="{Binding FanAction.ToolTip}"
+                                                    Visibility="{Binding FanAction.Visibility}">
+                                                    <FontIcon FontSize="14" Glyph="&#xE9CA;" />
+                                                </Button>
+                                                <Button
+                                                    Width="32"
+                                                    Height="32"
+                                                    Padding="0"
+                                                    Click="QuickActionButton_Click"
+                                                    CommandParameter="{Binding LockAction}"
+                                                    ToolTipService.ToolTip="{Binding LockAction.ToolTip}"
+                                                    Visibility="{Binding LockAction.Visibility}">
+                                                    <FontIcon FontSize="14" Glyph="&#xE72E;" />
+                                                </Button>
+                                            </StackPanel>
                                         </StackPanel>
                                     </Border>
                                 </DataTemplate>
