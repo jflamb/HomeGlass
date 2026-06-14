@@ -105,9 +105,13 @@
                                                     Padding="0"
                                                     Click="QuickActionButton_Click"
                                                     CommandParameter="{Binding LightAction}"
+                                                    IsEnabled="{Binding LightAction.IsEnabled}"
                                                     ToolTipService.ToolTip="{Binding LightAction.ToolTip}"
                                                     Visibility="{Binding LightAction.Visibility}">
-                                                    <FontIcon FontSize="14" Glyph="&#xE706;" />
+                                                    <Grid>
+                                                        <FontIcon FontSize="14" Glyph="&#xE706;" Visibility="{Binding LightAction.IconVisibility}" />
+                                                        <ProgressRing Width="16" Height="16" IsActive="{Binding LightAction.IsBusy}" Visibility="{Binding LightAction.BusyVisibility}" />
+                                                    </Grid>
                                                 </Button>
                                                 <Button
                                                     Width="32"
@@ -115,9 +119,17 @@
                                                     Padding="0"
                                                     Click="QuickActionButton_Click"
                                                     CommandParameter="{Binding FanAction}"
+                                                    IsEnabled="{Binding FanAction.IsEnabled}"
                                                     ToolTipService.ToolTip="{Binding FanAction.ToolTip}"
                                                     Visibility="{Binding FanAction.Visibility}">
-                                                    <FontIcon FontSize="14" Glyph="&#xE9CA;" />
+                                                    <Grid>
+                                                        <PathIcon
+                                                            Width="16"
+                                                            Height="16"
+                                                            Data="M8,2 C9.4,4.1 9.1,5.9 8.2,7.1 C10.2,6.7 12.1,7.2 14,8.6 C11.6,9.8 9.9,9.6 8.7,8.7 C9.1,10.7 8.6,12.5 7.2,14 C6.1,11.7 6.3,10 7.2,8.8 C5.2,9.2 3.3,8.7 2,7.4 C4.2,6.2 5.9,6.4 7.1,7.3 C6.7,5.3 7.1,3.5 8,2 Z M8,7.25 A0.75,0.75 0,1,0 8,8.75 A0.75,0.75 0,0,0 8,7.25 Z"
+                                                            Visibility="{Binding FanAction.IconVisibility}" />
+                                                        <ProgressRing Width="16" Height="16" IsActive="{Binding FanAction.IsBusy}" Visibility="{Binding FanAction.BusyVisibility}" />
+                                                    </Grid>
                                                 </Button>
                                                 <Button
                                                     Width="32"
@@ -125,9 +137,13 @@
                                                     Padding="0"
                                                     Click="QuickActionButton_Click"
                                                     CommandParameter="{Binding LockAction}"
+                                                    IsEnabled="{Binding LockAction.IsEnabled}"
                                                     ToolTipService.ToolTip="{Binding LockAction.ToolTip}"
                                                     Visibility="{Binding LockAction.Visibility}">
-                                                    <FontIcon FontSize="14" Glyph="&#xE72E;" />
+                                                    <Grid>
+                                                        <FontIcon FontSize="14" Glyph="&#xE72E;" Visibility="{Binding LockAction.IconVisibility}" />
+                                                        <ProgressRing Width="16" Height="16" IsActive="{Binding LockAction.IsBusy}" Visibility="{Binding LockAction.BusyVisibility}" />
+                                                    </Grid>
                                                 </Button>
                                             </StackPanel>
                                         </StackPanel>

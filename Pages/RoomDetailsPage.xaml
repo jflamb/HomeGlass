@@ -11,6 +11,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
         <StackPanel Spacing="4">
@@ -37,5 +38,83 @@
                 </ItemsPanelTemplate>
             </ItemsControl.ItemsPanel>
         </ItemsControl>
+
+        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+            <ListView
+                x:Name="DeviceGroupsListView"
+                IsItemClickEnabled="False"
+                SelectionMode="None">
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Spacing="10" Margin="0,0,0,20">
+                            <StackPanel Spacing="2">
+                                <TextBlock FontSize="22" FontWeight="SemiBold" Text="{Binding Name}" />
+                                <TextBlock Text="{Binding Summary}" />
+                            </StackPanel>
+
+                            <GridView
+                                ItemsSource="{Binding Devices}"
+                                IsItemClickEnabled="False"
+                                SelectionMode="None">
+                                <GridView.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border
+                                            Width="260"
+                                            MinHeight="142"
+                                            Padding="16"
+                                            Background="{Binding CardBackground}"
+                                            BorderBrush="{Binding CardBorderBrush}"
+                                            BorderThickness="{Binding CardBorderThickness}"
+                                            CornerRadius="8">
+                                            <StackPanel Spacing="10">
+                                                <Grid ColumnSpacing="10">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="24" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <FontIcon
+                                                        Width="20"
+                                                        Height="24"
+                                                        Margin="0,3,0,0"
+                                                        FontSize="18"
+                                                        HorizontalAlignment="Center"
+                                                        VerticalAlignment="Top"
+                                                        Glyph="{Binding IconGlyph}" />
+                                                    <StackPanel Grid.Column="1" Spacing="2">
+                                                        <TextBlock FontSize="18" FontWeight="SemiBold" Text="{Binding Name}" TextWrapping="Wrap" />
+                                                        <TextBlock Text="{Binding Detail}" TextWrapping="Wrap" />
+                                                    </StackPanel>
+                                                </Grid>
+
+                                                <ItemsControl ItemsSource="{Binding StatusChips}">
+                                                    <ItemsControl.HorizontalAlignment>Left</ItemsControl.HorizontalAlignment>
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Border
+                                                                Margin="0,0,6,6"
+                                                                Padding="8,4"
+                                                                Background="{Binding Background}"
+                                                                CornerRadius="8"
+                                                                ToolTipService.ToolTip="{Binding ToolTip}">
+                                                                <TextBlock FontSize="12" FontWeight="SemiBold" Foreground="{Binding Foreground}" Text="{Binding Text}" />
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                    <ItemsControl.ItemsPanel>
+                                                        <ItemsPanelTemplate>
+                                                            <StackPanel Orientation="Horizontal" />
+                                                        </ItemsPanelTemplate>
+                                                    </ItemsControl.ItemsPanel>
+                                                </ItemsControl>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </GridView.ItemTemplate>
+                            </GridView>
+                        </StackPanel>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+        </ScrollViewer>
     </Grid>
 </Page>

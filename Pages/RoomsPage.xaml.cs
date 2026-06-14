@@ -186,6 +186,8 @@ public sealed partial class RoomsPage : Page
             return;
         }
 
+        action.IsBusy = true;
+
         try
         {
             await AppServices.HomeAssistantApi.CallServiceAsync(
@@ -197,6 +199,10 @@ public sealed partial class RoomsPage : Page
         catch (Exception ex)
         {
             ShowInfo(InfoBarSeverity.Error, "Home Assistant error", ex.Message);
+        }
+        finally
+        {
+            action.IsBusy = false;
         }
     }
 
@@ -1078,13 +1084,50 @@ public sealed record RoomStatusViewModel(
     }
 }
 
-public sealed record RoomQuickActionViewModel(
-    string AreaId,
-    string Domain,
-    string Service,
-    string ToolTip,
-    Visibility Visibility)
+public sealed class RoomQuickActionViewModel : ObservableObject
 {
+    private bool _isBusy;
+
+    private RoomQuickActionViewModel(string areaId, string domain, string service, string toolTip, Visibility visibility)
+    {
+        AreaId = areaId;
+        Domain = domain;
+        Service = service;
+        _toolTip = toolTip;
+        Visibility = visibility;
+    }
+
+    private readonly string _toolTip;
+
+    public string AreaId { get; }
+
+    public string Domain { get; }
+
+    public string Service { get; }
+
+    public string ToolTip => IsBusy ? "Sending command..." : _toolTip;
+
+    public Visibility Visibility { get; }
+
+    public bool IsBusy
+    {
+        get => _isBusy;
+        set
+        {
+            SetProperty(ref _isBusy, value);
+            OnPropertyChanged(nameof(IsEnabled));
+            OnPropertyChanged(nameof(BusyVisibility));
+            OnPropertyChanged(nameof(IconVisibility));
+            OnPropertyChanged(nameof(ToolTip));
+        }
+    }
+
+    public bool IsEnabled => !IsBusy;
+
+    public Visibility BusyVisibility => IsBusy ? Visibility.Visible : Visibility.Collapsed;
+
+    public Visibility IconVisibility => IsBusy ? Visibility.Collapsed : Visibility.Visible;
+
     public static RoomQuickActionViewModel Hidden { get; } = new(string.Empty, string.Empty, string.Empty, string.Empty, Visibility.Collapsed);
 
     public static RoomQuickActionViewModel Visible(string areaId, string domain, string service, string toolTip)
