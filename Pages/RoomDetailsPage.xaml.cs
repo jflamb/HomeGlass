@@ -295,12 +295,21 @@ public sealed partial class RoomDetailsPage : Page
             .GroupBy(entity => entity.DeviceId!, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.Ordinal);
 
-        return roomDevices.Values
+        var deviceCards = roomDevices.Values
             .Select(device =>
             {
                 entitiesByDevice.TryGetValue(device.Id, out var deviceEntities);
                 return DeviceCardViewModel.FromDevice(device, roomName, deviceEntities ?? [], roomEntities, statesByEntityId);
             })
+            .ToList();
+        var renderedDeviceIds = roomDevices.Keys.ToHashSet(StringComparer.Ordinal);
+        var entityBackedGroupCards = roomEntities
+            .Where(entity => IsEntityBackedLightGroup(entity, renderedDeviceIds, roomEntities, statesByEntityId))
+            .Select(entity => DeviceCardViewModel.FromLightGroupEntity(entity, roomName, roomEntities, statesByEntityId))
+            .ToList();
+
+        return deviceCards
+            .Concat(entityBackedGroupCards)
             .GroupBy(device => device.Type, StringComparer.CurrentCultureIgnoreCase)
             .OrderBy(group => GetTypeOrder(group.Key))
             .ThenBy(group => group.Key, StringComparer.CurrentCultureIgnoreCase)
@@ -310,6 +319,54 @@ public sealed partial class RoomDetailsPage : Page
                 return new DeviceGroupViewModel(group.Key, $"{cards.Count} {Pluralize(cards.Count, "device")}", cards);
             })
             .ToList();
+    }
+
+    private static bool IsEntityBackedLightGroup(
+        HomeAssistantEntityRegistryEntry entity,
+        ISet<string> renderedDeviceIds,
+        IReadOnlyList<HomeAssistantEntityRegistryEntry> roomEntities,
+        IReadOnlyDictionary<string, HomeAssistantEntityState> statesByEntityId)
+    {
+        if (DeviceCardViewModel.GetDomainName(entity.EntityId) != "light" ||
+            DeviceCardViewModel.IsIndicatorLightEntity(entity) ||
+            (!string.IsNullOrWhiteSpace(entity.DeviceId) && renderedDeviceIds.Contains(entity.DeviceId)))
+        {
+            return false;
+        }
+
+        if (!statesByEntityId.TryGetValue(entity.EntityId, out var state))
+        {
+            return false;
+        }
+
+        return DeviceCardViewModel.HasGroupedEntityList(state)
+            || DeviceCardViewModel.LooksLikeLightGroupEntity(entity, state)
+            || HasNumberedSiblingLights(entity, state, roomEntities);
+    }
+
+    private static bool HasNumberedSiblingLights(
+        HomeAssistantEntityRegistryEntry entity,
+        HomeAssistantEntityState state,
+        IReadOnlyList<HomeAssistantEntityRegistryEntry> roomEntities)
+    {
+        var name = DeviceCardViewModel.GetEntityDisplayName(entity, state).Trim();
+        if (string.IsNullOrWhiteSpace(name) || name.Any(char.IsDigit))
+        {
+            return false;
+        }
+
+        return roomEntities.Any(candidate =>
+        {
+            if (candidate.EntityId == entity.EntityId ||
+                DeviceCardViewModel.GetDomainName(candidate.EntityId) != "light")
+            {
+                return false;
+            }
+
+            var candidateName = DeviceCardViewModel.GetEntityDisplayName(candidate, null).Trim();
+            return candidateName.StartsWith($"{name} ", StringComparison.CurrentCultureIgnoreCase)
+                && candidateName[name.Length..].Any(char.IsDigit);
+        });
     }
 
     private static int GetTypeOrder(string type)
@@ -698,6 +755,51 @@ public sealed class DeviceCardViewModel : ObservableObject
             primaryStates.Any(state => state.State == "on"));
     }
 
+    public static DeviceCardViewModel FromLightGroupEntity(
+        HomeAssistantEntityRegistryEntry entity,
+        string roomName,
+        IReadOnlyList<HomeAssistantEntityRegistryEntry> roomEntities,
+        IReadOnlyDictionary<string, HomeAssistantEntityState> statesByEntityId)
+    {
+        var state = statesByEntityId.TryGetValue(entity.EntityId, out var entityState)
+            ? entityState
+            : null;
+        var states = state is null ? [] : new[] { state };
+        var unavailable = state is null || state.State is "unavailable" or "unknown";
+        var active = state?.State == "on";
+        var chips = BuildStatusChips("light_group", states, roomEntities, statesByEntityId, isLightGroup: true);
+        var accent = active ? GetAccent("light_group") : Colors.Transparent;
+        var lightFeatures = GetLightFeatures(states);
+        var name = TrimRoomPrefix(GetEntityDisplayName(entity, state), roomName);
+
+        return new DeviceCardViewModel(
+            $"entity:{entity.EntityId}",
+            name,
+            "Home Assistant light group",
+            GetTypeName("light_group"),
+            GetIconGlyph("light_group"),
+            chips,
+            unavailable
+                ? new SolidColorBrush(Color.FromArgb(255, 38, 38, 38))
+                : active ? new SolidColorBrush(Color.FromArgb(44, accent.R, accent.G, accent.B)) : new SolidColorBrush(Color.FromArgb(255, 48, 48, 48)),
+            unavailable
+                ? new SolidColorBrush(Color.FromArgb(255, 50, 50, 50))
+                : active ? new SolidColorBrush(Color.FromArgb(220, accent.R, accent.G, accent.B)) : new SolidColorBrush(Color.FromArgb(255, 58, 58, 58)),
+            new Thickness(active ? 2 : 1),
+            unavailable ? 0.58 : 1,
+            "light",
+            entity.EntityId,
+            !unavailable,
+            lightFeatures.SupportsBrightness,
+            lightFeatures.SupportsColorTemperature,
+            lightFeatures.SupportsColor,
+            state is null ? 100 : TryGetBrightnessPercent(state) ?? 100,
+            state is null ? 3000 : TryGetColorTemperature(state) ?? 3000,
+            lightFeatures.MinColorTemperatureKelvin,
+            lightFeatures.MaxColorTemperatureKelvin,
+            active);
+    }
+
     private static string GetPrimaryDomain(
         HomeAssistantDevice device,
         IReadOnlyList<HomeAssistantEntityState> states,
@@ -706,7 +808,7 @@ public sealed class DeviceCardViewModel : ObservableObject
         var domains = states
             .Where(state => !IsIndicatorLight(state))
             .Select(state => GetDomain(state.EntityId))
-            .Concat(entities.Where(entity => !IsIndicatorLight(entity)).Select(entity => GetDomain(entity.EntityId)))
+            .Concat(entities.Where(entity => !IsIndicatorLightEntity(entity)).Select(entity => GetDomain(entity.EntityId)))
             .ToList();
         if (IsLightGroupDevice(device, entities, states))
         {
@@ -788,12 +890,27 @@ public sealed class DeviceCardViewModel : ObservableObject
                 || (TryGetAttributeString(state, "friendly_name")?.Contains("indicator", StringComparison.CurrentCultureIgnoreCase) ?? false));
     }
 
-    private static bool IsIndicatorLight(HomeAssistantEntityRegistryEntry entity)
+    public static bool IsIndicatorLightEntity(HomeAssistantEntityRegistryEntry entity)
     {
         return GetDomain(entity.EntityId) == "light"
             && (entity.EntityId.Contains("indicator", StringComparison.OrdinalIgnoreCase)
                 || (entity.Name?.Contains("indicator", StringComparison.CurrentCultureIgnoreCase) ?? false)
                 || (entity.OriginalName?.Contains("indicator", StringComparison.CurrentCultureIgnoreCase) ?? false));
+    }
+
+    public static bool LooksLikeLightGroupEntity(HomeAssistantEntityRegistryEntry entity, HomeAssistantEntityState state)
+    {
+        var name = GetEntityDisplayName(entity, state);
+        return ContainsWord(entity.Platform, "group")
+            || ContainsWord(entity.EntityId, "group")
+            || ContainsWord(name, "group")
+            || HasLightGroupAliases(entity, state);
+    }
+
+    private static bool HasLightGroupAliases(HomeAssistantEntityRegistryEntry entity, HomeAssistantEntityState state)
+    {
+        var name = GetEntityDisplayName(entity, state);
+        return name.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Length > 1;
     }
 
     private static IReadOnlyList<StatusChipViewModel> BuildStatusChips(
@@ -1069,8 +1186,7 @@ public sealed class DeviceCardViewModel : ObservableObject
     {
         var registryName = roomEntities.FirstOrDefault(entity => entity.EntityId == entityId)?.Name
             ?? roomEntities.FirstOrDefault(entity => entity.EntityId == entityId)?.OriginalName;
-        var friendlyName = TryGetAttributeString(state, "friendly_name");
-        var name = registryName ?? friendlyName ?? entityId[(entityId.IndexOf('.') + 1)..].Replace('_', ' ');
+        var name = registryName ?? GetEntityDisplayName(entityId, state);
 
         foreach (var prefix in new[] { "Main Bedroom ", "Living Room ", "Bedroom " })
         {
@@ -1081,6 +1197,19 @@ public sealed class DeviceCardViewModel : ObservableObject
         }
 
         return name;
+    }
+
+    public static string GetEntityDisplayName(HomeAssistantEntityRegistryEntry entity, HomeAssistantEntityState? state)
+    {
+        return entity.Name
+            ?? entity.OriginalName
+            ?? GetEntityDisplayName(entity.EntityId, state);
+    }
+
+    private static string GetEntityDisplayName(string entityId, HomeAssistantEntityState? state)
+    {
+        return TryGetAttributeString(state, "friendly_name")
+            ?? entityId[(entityId.IndexOf('.') + 1)..].Replace('_', ' ');
     }
 
     private static bool IsBatterySensor(HomeAssistantEntityState state)
@@ -1311,7 +1440,7 @@ public sealed class DeviceCardViewModel : ObservableObject
             || states.Any(HasGroupedEntityList);
     }
 
-    private static bool HasGroupedEntityList(HomeAssistantEntityState state)
+    public static bool HasGroupedEntityList(HomeAssistantEntityState state)
     {
         return state.Attributes.ValueKind == JsonValueKind.Object
             && state.Attributes.TryGetProperty("entity_id", out var entityIds)
@@ -1398,6 +1527,11 @@ public sealed class DeviceCardViewModel : ObservableObject
     {
         var separatorIndex = entityId.IndexOf('.');
         return separatorIndex > 0 ? entityId[..separatorIndex] : string.Empty;
+    }
+
+    public static string GetDomainName(string entityId)
+    {
+        return GetDomain(entityId);
     }
 
     private static string NormalizeState(string state)
