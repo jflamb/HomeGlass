@@ -524,20 +524,26 @@ public sealed class RoomCardViewModel : ObservableObject
         {
             var lightsOnStates = lightStates.Select(entity => entity.State).Where(state => state.State == "on").ToList();
             var lightDetail = BuildLightDetail(lightsOnStates);
-            chips.Add(StatusChipViewModel.Active($"{lightsOn} {Pluralize(lightsOn, "light")} on{lightDetail}"));
+            chips.Add(StatusChipViewModel.Active(
+                $"{lightsOn} {Pluralize(lightsOn, "light")} on{lightDetail}",
+                $"{lightsOn} primary {Pluralize(lightsOn, "light")} in this room is on. Light groups and indicator LEDs are excluded."));
             accentColor = GetLightAccentColor(lightsOnStates);
             hasAccent = true;
         }
         else if (lightStates.Count > 0)
         {
-            chips.Add(StatusChipViewModel.Neutral("Lights off"));
+            chips.Add(StatusChipViewModel.Neutral(
+                "Lights off",
+                $"{lightStates.Count} primary {Pluralize(lightStates.Count, "light")} in this room is off. Light groups and indicator LEDs are excluded."));
         }
 
         var fans = entities.Where(entity => GetDomain(entity.State.EntityId) == "fan").ToList();
         var fansOn = fans.Count(entity => entity.State.State == "on");
         if (fansOn > 0)
         {
-            chips.Add(StatusChipViewModel.Active($"{fansOn} {Pluralize(fansOn, "fan")} on"));
+            chips.Add(StatusChipViewModel.Active(
+                $"{fansOn} {Pluralize(fansOn, "fan")} on",
+                $"{fansOn} {Pluralize(fansOn, "fan")} in this room is running."));
             if (!hasAccent)
             {
                 accentColor = Color.FromArgb(255, 94, 234, 212);
@@ -546,13 +552,17 @@ public sealed class RoomCardViewModel : ObservableObject
         }
         else if (fans.Count > 0)
         {
-            chips.Add(StatusChipViewModel.Neutral("Fans off"));
+            chips.Add(StatusChipViewModel.Neutral(
+                "Fans off",
+                $"{fans.Count} {Pluralize(fans.Count, "fan")} in this room is off."));
         }
 
         var climateChip = BuildClimateChip(entities);
         if (!string.IsNullOrWhiteSpace(climateChip))
         {
-            chips.Add(StatusChipViewModel.Neutral(climateChip));
+            chips.Add(StatusChipViewModel.Neutral(
+                climateChip,
+                "Current climate reading or HVAC mode reported by Home Assistant."));
         }
 
         var presenceChip = BuildPresenceChip(entities);
@@ -580,7 +590,9 @@ public sealed class RoomCardViewModel : ObservableObject
 
         if (chips.Count == 0)
         {
-            chips.Add(StatusChipViewModel.Neutral(deviceCount > 0 ? "Ready" : "Empty"));
+            chips.Add(deviceCount > 0
+                ? StatusChipViewModel.Neutral("No summary", "This room has devices, but none match the room summary categories yet.")
+                : StatusChipViewModel.Neutral("Empty", "Home Assistant has no devices assigned to this room."));
         }
 
         return hasAccent
@@ -646,12 +658,19 @@ public sealed class RoomCardViewModel : ObservableObject
         }
 
         if (names.Any(name => name!.EndsWith(" light", StringComparison.CurrentCultureIgnoreCase)) &&
-            !ContainsAny(searchableName, " top ", " bottom ", " left ", " right ", " upper ", " lower ", " can ", " lamp ", " strip ", " pendant ", " sconce "))
+            !ContainsAny(searchableName, " top ", " bottom ", " left ", " right ", " upper ", " lower ", " can ", " lamp ", " strip ", " pendant ", " sconce ") &&
+            !names.Any(name => EndsWithNumber(name!)))
         {
             return true;
         }
 
         return false;
+    }
+
+    private static bool EndsWithNumber(string value)
+    {
+        var trimmed = value.Trim();
+        return trimmed.Length > 0 && char.IsDigit(trimmed[^1]);
     }
 
     private static string? BuildClimateChip(IReadOnlyList<RoomEntityState> entities)
@@ -690,8 +709,8 @@ public sealed class RoomCardViewModel : ObservableObject
         }
 
         return presenceStates.Any(state => state.State == "on")
-            ? StatusChipViewModel.Active("Presence")
-            : StatusChipViewModel.Neutral("Vacant");
+            ? StatusChipViewModel.Active("Presence", "At least one motion, occupancy, or presence sensor is active.")
+            : StatusChipViewModel.Neutral("Vacant", "Motion, occupancy, and presence sensors in this room are inactive.");
     }
 
     private static StatusChipViewModel? BuildLockChip(IReadOnlyList<RoomEntityState> entities)
@@ -705,11 +724,15 @@ public sealed class RoomCardViewModel : ObservableObject
         var unlocked = locks.Count(state => state.State is "unlocked" or "open");
         if (unlocked > 0)
         {
-            return StatusChipViewModel.Warning(unlocked == 1 ? "Unlocked" : $"{unlocked} unlocked");
+            return StatusChipViewModel.Warning(
+                unlocked == 1 ? "Unlocked" : $"{unlocked} unlocked",
+                $"{unlocked} {Pluralize(unlocked, "lock")} in this room is unlocked or open.");
         }
 
         var locked = locks.Count(state => state.State == "locked");
-        return locked == locks.Count ? StatusChipViewModel.Neutral("Locked") : null;
+        return locked == locks.Count
+            ? StatusChipViewModel.Neutral("Locked", $"{locked} {Pluralize(locked, "lock")} in this room is locked.")
+            : null;
     }
 
     private static StatusChipViewModel? BuildContactChip(IReadOnlyList<RoomEntityState> entities)
@@ -729,10 +752,14 @@ public sealed class RoomCardViewModel : ObservableObject
         var open = contacts.Count(state => state.State == "on");
         if (open > 0)
         {
-            return StatusChipViewModel.Warning(open == 1 ? "Open" : $"{open} open");
+            return StatusChipViewModel.Warning(
+                open == 1 ? "Open" : $"{open} open",
+                $"{open} door, window, garage, or opening sensor in this room is open.");
         }
 
-        return StatusChipViewModel.Neutral("Closed");
+        return StatusChipViewModel.Neutral(
+            "Closed",
+            $"{contacts.Count} door, window, garage, or opening {Pluralize(contacts.Count, "sensor")} in this room is closed.");
     }
 
     private static string? TryGetTemperature(HomeAssistantEntityState climate)
@@ -915,35 +942,39 @@ public sealed record RoomStatusViewModel(
 
 public sealed record StatusChipViewModel(
     string Text,
+    string ToolTip,
     Brush Background,
     Brush Foreground,
     bool IsEmphasized,
     string Kind)
 {
-    public static StatusChipViewModel Neutral(string text)
+    public static StatusChipViewModel Neutral(string text, string toolTip)
     {
         return new StatusChipViewModel(
             text,
+            toolTip,
             new SolidColorBrush(Color.FromArgb(255, 62, 62, 62)),
             new SolidColorBrush(Colors.White),
             false,
             "neutral");
     }
 
-    public static StatusChipViewModel Active(string text)
+    public static StatusChipViewModel Active(string text, string toolTip)
     {
         return new StatusChipViewModel(
             text,
+            toolTip,
             new SolidColorBrush(Color.FromArgb(255, 255, 214, 102)),
             new SolidColorBrush(Color.FromArgb(255, 36, 28, 0)),
             true,
             "active");
     }
 
-    public static StatusChipViewModel Warning(string text)
+    public static StatusChipViewModel Warning(string text, string toolTip)
     {
         return new StatusChipViewModel(
             text,
+            toolTip,
             new SolidColorBrush(Color.FromArgb(255, 255, 159, 67)),
             new SolidColorBrush(Color.FromArgb(255, 40, 20, 0)),
             true,
