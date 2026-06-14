@@ -3,7 +3,6 @@ using HomeGlass.Services;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
@@ -19,6 +18,7 @@ public sealed partial class RoomDetailsPage : Page
     private readonly ObservableCollection<DeviceGroupViewModel> _deviceGroups = [];
     private IReadOnlyList<HomeAssistantDevice> _devices = [];
     private IReadOnlyList<HomeAssistantEntityRegistryEntry> _entities = [];
+    private DeviceCardViewModel? _drawerParent;
 
     public RoomDetailsPage()
     {
@@ -78,7 +78,7 @@ public sealed partial class RoomDetailsPage : Page
     {
         if (sender is FrameworkElement element)
         {
-            ShowDeviceFlyout(element);
+            ShowControlDrawer(element);
         }
     }
 
@@ -91,19 +91,56 @@ public sealed partial class RoomDetailsPage : Page
 
         if (sender is FrameworkElement element)
         {
-            ShowDeviceFlyout(element);
+            ShowControlDrawer(element);
         }
     }
 
-    private static void ShowDeviceFlyout(FrameworkElement element)
+    private void ShowControlDrawer(FrameworkElement element)
     {
         var flyoutTarget = element is Border
             ? element
             : FindAncestor<Border>(element);
-        if (flyoutTarget?.Tag is DeviceCardViewModel { HasSecondaryControls: true })
+        if (flyoutTarget?.Tag is DeviceCardViewModel { HasSecondaryControls: true } device)
         {
-            FlyoutBase.ShowAttachedFlyout(flyoutTarget);
+            OpenControlDrawer(device, parent: null);
         }
+    }
+
+    private void OpenControlDrawer(DeviceCardViewModel device, DeviceCardViewModel? parent)
+    {
+        _drawerParent = parent;
+        DrawerBackButton.Visibility = parent is null ? Visibility.Collapsed : Visibility.Visible;
+        ControlDrawer.DataContext = device;
+        ControlDrawer.IsPaneOpen = true;
+    }
+
+    private void DrawerMember_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (IsInsideButton(e.OriginalSource as DependencyObject))
+        {
+            return;
+        }
+
+        if (sender is FrameworkElement { Tag: DeviceCardViewModel member } &&
+            ControlDrawer.DataContext is DeviceCardViewModel parent)
+        {
+            OpenControlDrawer(member, parent);
+        }
+    }
+
+    private void DrawerBackButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_drawerParent is not null)
+        {
+            OpenControlDrawer(_drawerParent, parent: null);
+        }
+    }
+
+    private void CloseDrawerButton_Click(object sender, RoutedEventArgs e)
+    {
+        ControlDrawer.IsPaneOpen = false;
+        ControlDrawer.DataContext = null;
+        _drawerParent = null;
     }
 
     private static bool IsInsideButton(DependencyObject? source)
@@ -307,9 +344,17 @@ public sealed partial class RoomDetailsPage : Page
             .Where(entity => IsEntityBackedLightGroup(entity, renderedDeviceIds, roomEntities, statesByEntityId))
             .Select(entity => DeviceCardViewModel.FromLightGroupEntity(entity, roomName, roomEntities, statesByEntityId))
             .ToList();
+        var lightGroupCards = deviceCards
+            .Concat(entityBackedGroupCards)
+            .Where(card => card.Type == "Light Groups")
+            .ToList();
+        var broadestLightGroupMemberIds = GetBroadestLightGroupMemberIds(lightGroupCards);
 
         return deviceCards
             .Concat(entityBackedGroupCards)
+            .Where(device => device.Type != "Lights" ||
+                string.IsNullOrWhiteSpace(device.PrimaryEntityId) ||
+                !broadestLightGroupMemberIds.Contains(device.PrimaryEntityId))
             .GroupBy(device => device.Type, StringComparer.CurrentCultureIgnoreCase)
             .OrderBy(group => GetTypeOrder(group.Key))
             .ThenBy(group => group.Key, StringComparer.CurrentCultureIgnoreCase)
@@ -319,6 +364,23 @@ public sealed partial class RoomDetailsPage : Page
                 return new DeviceGroupViewModel(group.Key, $"{cards.Count} {Pluralize(cards.Count, "device")}", cards);
             })
             .ToList();
+    }
+
+    private static ISet<string> GetBroadestLightGroupMemberIds(IReadOnlyList<DeviceCardViewModel> lightGroupCards)
+    {
+        var groupsWithMembers = lightGroupCards
+            .Where(group => group.MemberEntityIds.Count > 0)
+            .ToList();
+        var broadestGroups = groupsWithMembers
+            .Where(group => !groupsWithMembers.Any(other =>
+                other != group &&
+                other.MemberEntityIds.Count > group.MemberEntityIds.Count &&
+                group.MemberEntityIds.All(other.MemberEntityIds.Contains)))
+            .ToList();
+
+        return broadestGroups
+            .SelectMany(group => group.MemberEntityIds)
+            .ToHashSet(StringComparer.Ordinal);
     }
 
     private static bool IsEntityBackedLightGroup(
@@ -373,8 +435,8 @@ public sealed partial class RoomDetailsPage : Page
     {
         return type switch
         {
-            "Lights" => 0,
-            "Light Groups" => 1,
+            "Light Groups" => 0,
+            "Lights" => 1,
             "Fans" => 2,
             "Climate" => 3,
             "Locks" => 4,
@@ -491,7 +553,9 @@ public sealed class DeviceCardViewModel : ObservableObject
         int colorTemperatureKelvin,
         int minColorTemperatureKelvin,
         int maxColorTemperatureKelvin,
-        bool isOn)
+        bool isOn,
+        IReadOnlyList<DeviceCardViewModel>? members = null,
+        IReadOnlyList<string>? memberEntityIds = null)
     {
         Key = key;
         _name = name;
@@ -514,6 +578,8 @@ public sealed class DeviceCardViewModel : ObservableObject
         MinColorTemperatureKelvin = minColorTemperatureKelvin;
         MaxColorTemperatureKelvin = maxColorTemperatureKelvin;
         _isOn = isOn;
+        Members = new ObservableCollection<DeviceCardViewModel>(members ?? []);
+        MemberEntityIds = memberEntityIds ?? [];
     }
 
     public string Key { get; }
@@ -597,6 +663,12 @@ public sealed class DeviceCardViewModel : ObservableObject
             OnPropertyChanged(nameof(ToggleToolTip));
         }
     }
+
+    public ObservableCollection<DeviceCardViewModel> Members { get; }
+
+    public IReadOnlyList<string> MemberEntityIds { get; private set; }
+
+    public Visibility MembersVisibility => Members.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
     public bool IsBusy
     {
@@ -683,6 +755,39 @@ public sealed class DeviceCardViewModel : ObservableObject
         BrightnessPercent = incomingDevice.BrightnessPercent;
         ColorTemperatureKelvin = incomingDevice.ColorTemperatureKelvin;
         IsOn = incomingDevice.IsOn;
+        MemberEntityIds = incomingDevice.MemberEntityIds;
+        ApplyMembers(incomingDevice.Members);
+        OnPropertyChanged(nameof(MembersVisibility));
+    }
+
+    private void ApplyMembers(IReadOnlyList<DeviceCardViewModel> members)
+    {
+        for (var index = Members.Count - 1; index >= 0; index--)
+        {
+            if (!members.Any(member => member.Key == Members[index].Key))
+            {
+                Members.RemoveAt(index);
+            }
+        }
+
+        for (var targetIndex = 0; targetIndex < members.Count; targetIndex++)
+        {
+            var incomingMember = members[targetIndex];
+            var existingMember = Members.FirstOrDefault(member => member.Key == incomingMember.Key);
+            if (existingMember is null)
+            {
+                Members.Insert(targetIndex, incomingMember);
+            }
+            else
+            {
+                var existingIndex = Members.IndexOf(existingMember);
+                existingMember.ApplyFrom(incomingMember);
+                if (existingIndex != targetIndex)
+                {
+                    Members.Move(existingIndex, targetIndex);
+                }
+            }
+        }
     }
 
     public void ApplyOptimisticPowerState(string service)
@@ -726,6 +831,13 @@ public sealed class DeviceCardViewModel : ObservableObject
             && primaryState is not null
             && serviceDomain is "light" or "fan";
         var lightFeatures = GetLightFeatures(primaryStates);
+        var memberEntityIds = isLightGroup
+            ? GetGroupMemberEntityIds(primaryStates, groupEntity: null, roomEntities)
+            : [];
+        var members = memberEntityIds
+            .Select(entityId => FromLightMemberEntity(entityId, roomName, roomEntities, statesByEntityId))
+            .OfType<DeviceCardViewModel>()
+            .ToList();
 
         return new DeviceCardViewModel(
             device.Id,
@@ -752,7 +864,9 @@ public sealed class DeviceCardViewModel : ObservableObject
             primaryState is null ? 3000 : TryGetColorTemperature(primaryState) ?? 3000,
             lightFeatures.MinColorTemperatureKelvin,
             lightFeatures.MaxColorTemperatureKelvin,
-            primaryStates.Any(state => state.State == "on"));
+            primaryStates.Any(state => state.State == "on"),
+            members,
+            memberEntityIds);
     }
 
     public static DeviceCardViewModel FromLightGroupEntity(
@@ -771,6 +885,11 @@ public sealed class DeviceCardViewModel : ObservableObject
         var accent = active ? GetAccent("light_group") : Colors.Transparent;
         var lightFeatures = GetLightFeatures(states);
         var name = TrimRoomPrefix(GetEntityDisplayName(entity, state), roomName);
+        var memberEntityIds = GetGroupMemberEntityIds(states, entity, roomEntities);
+        var members = memberEntityIds
+            .Select(entityId => FromLightMemberEntity(entityId, roomName, roomEntities, statesByEntityId))
+            .OfType<DeviceCardViewModel>()
+            .ToList();
 
         return new DeviceCardViewModel(
             $"entity:{entity.EntityId}",
@@ -795,6 +914,55 @@ public sealed class DeviceCardViewModel : ObservableObject
             lightFeatures.SupportsColor,
             state is null ? 100 : TryGetBrightnessPercent(state) ?? 100,
             state is null ? 3000 : TryGetColorTemperature(state) ?? 3000,
+            lightFeatures.MinColorTemperatureKelvin,
+            lightFeatures.MaxColorTemperatureKelvin,
+            active,
+            members,
+            memberEntityIds);
+    }
+
+    private static DeviceCardViewModel? FromLightMemberEntity(
+        string entityId,
+        string roomName,
+        IReadOnlyList<HomeAssistantEntityRegistryEntry> roomEntities,
+        IReadOnlyDictionary<string, HomeAssistantEntityState> statesByEntityId)
+    {
+        var entity = roomEntities.FirstOrDefault(candidate => candidate.EntityId == entityId);
+        if (entity is null || !statesByEntityId.TryGetValue(entityId, out var state))
+        {
+            return null;
+        }
+
+        var states = new[] { state };
+        var unavailable = state.State is "unavailable" or "unknown";
+        var active = state.State == "on";
+        var chips = new[] { BuildLightStateChip(states) };
+        var accent = active ? GetAccent("light") : Colors.Transparent;
+        var lightFeatures = GetLightFeatures(states);
+
+        return new DeviceCardViewModel(
+            $"member:{entityId}",
+            TrimRoomPrefix(GetEntityDisplayName(entity, state), roomName),
+            "Light",
+            GetTypeName("light"),
+            GetIconGlyph("light"),
+            chips,
+            unavailable
+                ? new SolidColorBrush(Color.FromArgb(255, 38, 38, 38))
+                : active ? new SolidColorBrush(Color.FromArgb(44, accent.R, accent.G, accent.B)) : new SolidColorBrush(Color.FromArgb(255, 48, 48, 48)),
+            unavailable
+                ? new SolidColorBrush(Color.FromArgb(255, 50, 50, 50))
+                : active ? new SolidColorBrush(Color.FromArgb(220, accent.R, accent.G, accent.B)) : new SolidColorBrush(Color.FromArgb(255, 58, 58, 58)),
+            new Thickness(active ? 2 : 1),
+            unavailable ? 0.58 : 1,
+            "light",
+            entityId,
+            !unavailable,
+            lightFeatures.SupportsBrightness,
+            lightFeatures.SupportsColorTemperature,
+            lightFeatures.SupportsColor,
+            TryGetBrightnessPercent(state) ?? 100,
+            TryGetColorTemperature(state) ?? 3000,
             lightFeatures.MinColorTemperatureKelvin,
             lightFeatures.MaxColorTemperatureKelvin,
             active);
@@ -1052,6 +1220,47 @@ public sealed class DeviceCardViewModel : ObservableObject
                     ? StatusChipViewModel.Active($"{label} on", $"{label} is on.")
                     : StatusChipViewModel.Neutral($"{label} off", $"{label} is off.");
             })
+            .ToList();
+    }
+
+    private static IReadOnlyList<string> GetGroupMemberEntityIds(
+        IReadOnlyList<HomeAssistantEntityState> lightStates,
+        HomeAssistantEntityRegistryEntry? groupEntity,
+        IReadOnlyList<HomeAssistantEntityRegistryEntry> roomEntities)
+    {
+        var explicitMemberIds = lightStates
+            .SelectMany(GetGroupedEntityIds)
+            .Distinct(StringComparer.Ordinal)
+            .Where(entityId => GetDomain(entityId) == "light")
+            .ToList();
+        if (explicitMemberIds.Count > 0)
+        {
+            return explicitMemberIds;
+        }
+
+        if (groupEntity is null)
+        {
+            return [];
+        }
+
+        var groupName = GetEntityDisplayName(groupEntity, lightStates.FirstOrDefault());
+        var aliases = groupName
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(alias => !string.IsNullOrWhiteSpace(alias))
+            .Distinct(StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+
+        return roomEntities
+            .Where(entity => entity.EntityId != groupEntity.EntityId && GetDomain(entity.EntityId) == "light")
+            .Where(entity =>
+            {
+                var entityName = GetEntityDisplayName(entity, null).Trim();
+                return aliases.Any(alias =>
+                    entityName.StartsWith($"{alias} ", StringComparison.CurrentCultureIgnoreCase) &&
+                    entityName[alias.Length..].Any(char.IsDigit));
+            })
+            .Select(entity => entity.EntityId)
+            .Distinct(StringComparer.Ordinal)
             .ToList();
     }
 

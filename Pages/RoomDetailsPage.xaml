@@ -7,6 +7,174 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
+    <SplitView
+        x:Name="ControlDrawer"
+        DisplayMode="Overlay"
+        IsPaneOpen="False"
+        OpenPaneLength="420"
+        PanePlacement="Right">
+        <SplitView.Pane>
+            <Grid Padding="20" RowSpacing="18">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Button
+                        x:Name="DrawerBackButton"
+                        Width="32"
+                        Height="32"
+                        Padding="0"
+                        Click="DrawerBackButton_Click"
+                        Visibility="Collapsed">
+                        <FontIcon FontSize="14" Glyph="&#xE72B;" />
+                    </Button>
+                    <StackPanel Grid.Column="1" Spacing="2">
+                        <TextBlock FontSize="22" FontWeight="SemiBold" Text="{Binding Name}" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding ControlSummary}" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <Button
+                        Grid.Column="2"
+                        Width="32"
+                        Height="32"
+                        Padding="0"
+                        Click="CloseDrawerButton_Click">
+                        <FontIcon FontSize="14" Glyph="&#xE711;" />
+                    </Button>
+                </Grid>
+
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                    <StackPanel Spacing="18">
+                        <ToggleSwitch
+                            Header="Power"
+                            IsEnabled="{Binding IsEnabled}"
+                            IsOn="{Binding IsOn, Mode=OneWay}"
+                            OffContent="Off"
+                            OnContent="On"
+                            Tag="{Binding}"
+                            Toggled="PowerToggleSwitch_Toggled" />
+
+                        <StackPanel Spacing="6" Visibility="{Binding BrightnessVisibility}">
+                            <TextBlock Text="{Binding BrightnessLabel}" />
+                            <Slider
+                                Maximum="100"
+                                Minimum="1"
+                                StepFrequency="1"
+                                Value="{Binding BrightnessPercent, Mode=TwoWay}" />
+                        </StackPanel>
+
+                        <StackPanel Spacing="6" Visibility="{Binding ColorTemperatureVisibility}">
+                            <TextBlock Text="{Binding ColorTemperatureLabel}" />
+                            <Slider
+                                Maximum="{Binding MaxColorTemperatureKelvin}"
+                                Minimum="{Binding MinColorTemperatureKelvin}"
+                                StepFrequency="50"
+                                Value="{Binding ColorTemperatureKelvin, Mode=TwoWay}" />
+                        </StackPanel>
+
+                        <StackPanel Spacing="6" Visibility="{Binding ColorVisibility}">
+                            <TextBlock Text="Color" />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Width="32" Height="32" Padding="0" Background="#FFFFA05A" BorderThickness="1" Click="SetLightColorButton_Click" CommandParameter="{Binding}" IsEnabled="{Binding IsEnabled}" Tag="255,160,90" />
+                                <Button Width="32" Height="32" Padding="0" Background="#FFFFD666" BorderThickness="1" Click="SetLightColorButton_Click" CommandParameter="{Binding}" IsEnabled="{Binding IsEnabled}" Tag="255,214,102" />
+                                <Button Width="32" Height="32" Padding="0" Background="#FF5EEAD4" BorderThickness="1" Click="SetLightColorButton_Click" CommandParameter="{Binding}" IsEnabled="{Binding IsEnabled}" Tag="94,234,212" />
+                                <Button Width="32" Height="32" Padding="0" Background="#FF60A5FA" BorderThickness="1" Click="SetLightColorButton_Click" CommandParameter="{Binding}" IsEnabled="{Binding IsEnabled}" Tag="96,165,250" />
+                                <Button Width="32" Height="32" Padding="0" Background="#FFA78BFA" BorderThickness="1" Click="SetLightColorButton_Click" CommandParameter="{Binding}" IsEnabled="{Binding IsEnabled}" Tag="167,139,250" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <Button
+                            Click="ApplyLightControlsButton_Click"
+                            CommandParameter="{Binding}"
+                            IsEnabled="{Binding IsEnabled}"
+                            Visibility="{Binding LightControlsVisibility}">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <ProgressRing
+                                    Width="16"
+                                    Height="16"
+                                    IsActive="{Binding IsBusy}"
+                                    Visibility="{Binding BusyVisibility}" />
+                                <TextBlock Text="Apply" />
+                            </StackPanel>
+                        </Button>
+
+                        <StackPanel Spacing="10" Visibility="{Binding MembersVisibility}">
+                            <TextBlock FontSize="18" FontWeight="SemiBold" Text="Lights" />
+                            <ItemsControl ItemsSource="{Binding Members}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border
+                                            Tag="{Binding}"
+                                            Margin="0,0,0,8"
+                                            Padding="12"
+                                            Background="{Binding CardBackground}"
+                                            BorderBrush="{Binding CardBorderBrush}"
+                                            BorderThickness="{Binding CardBorderThickness}"
+                                            CornerRadius="8"
+                                            Opacity="{Binding CardOpacity}"
+                                            Tapped="DrawerMember_Tapped">
+                                            <Grid ColumnSpacing="10">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <Button
+                                                    Width="32"
+                                                    Height="32"
+                                                    Padding="0"
+                                                    Click="ToggleDeviceButton_Click"
+                                                    CommandParameter="{Binding}"
+                                                    IsEnabled="{Binding IsEnabled}"
+                                                    ToolTipService.ToolTip="{Binding ToggleToolTip}">
+                                                    <Grid>
+                                                        <FontIcon FontSize="16" Glyph="{Binding IconGlyph}" Visibility="{Binding IconVisibility}" />
+                                                        <ProgressRing
+                                                            Width="16"
+                                                            Height="16"
+                                                            IsActive="{Binding IsBusy}"
+                                                            Visibility="{Binding BusyVisibility}" />
+                                                    </Grid>
+                                                </Button>
+                                                <StackPanel Grid.Column="1" Spacing="4">
+                                                    <TextBlock FontWeight="SemiBold" Text="{Binding Name}" TextWrapping="Wrap" />
+                                                    <ItemsControl ItemsSource="{Binding StatusChips}">
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <Border
+                                                                    Margin="0,0,6,0"
+                                                                    Padding="8,4"
+                                                                    Background="{Binding Background}"
+                                                                    CornerRadius="8">
+                                                                    <TextBlock FontSize="12" FontWeight="SemiBold" Foreground="{Binding Foreground}" Text="{Binding Text}" />
+                                                                </Border>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                        <ItemsControl.ItemsPanel>
+                                                            <ItemsPanelTemplate>
+                                                                <StackPanel Orientation="Horizontal" />
+                                                            </ItemsPanelTemplate>
+                                                        </ItemsControl.ItemsPanel>
+                                                    </ItemsControl>
+                                                </StackPanel>
+                                                <FontIcon Grid.Column="2" FontSize="14" Glyph="&#xE974;" />
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+        </SplitView.Pane>
+        <SplitView.Content>
     <Grid Padding="28" RowSpacing="18">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -69,69 +237,6 @@
                                             BorderThickness="{Binding CardBorderThickness}"
                                             CornerRadius="8"
                                             Opacity="{Binding CardOpacity}">
-                                            <FlyoutBase.AttachedFlyout>
-                                                <Flyout Placement="Right">
-                                                    <StackPanel Width="300" Spacing="14">
-                                                        <StackPanel Spacing="2">
-                                                            <TextBlock FontSize="18" FontWeight="SemiBold" Text="{Binding Name}" TextWrapping="Wrap" />
-                                                            <TextBlock Text="{Binding ControlSummary}" TextWrapping="Wrap" />
-                                                        </StackPanel>
-
-                                                        <ToggleSwitch
-                                                            Header="Power"
-                                                            IsEnabled="{Binding IsEnabled}"
-                                                            IsOn="{Binding IsOn, Mode=OneWay}"
-                                                            OffContent="Off"
-                                                            OnContent="On"
-                                                            Tag="{Binding}"
-                                                            Toggled="PowerToggleSwitch_Toggled" />
-
-                                                        <StackPanel Spacing="6" Visibility="{Binding BrightnessVisibility}">
-                                                            <TextBlock Text="{Binding BrightnessLabel}" />
-                                                            <Slider
-                                                                Maximum="100"
-                                                                Minimum="1"
-                                                                StepFrequency="1"
-                                                                Value="{Binding BrightnessPercent, Mode=TwoWay}" />
-                                                        </StackPanel>
-
-                                                        <StackPanel Spacing="6" Visibility="{Binding ColorTemperatureVisibility}">
-                                                            <TextBlock Text="{Binding ColorTemperatureLabel}" />
-                                                            <Slider
-                                                                Maximum="{Binding MaxColorTemperatureKelvin}"
-                                                                Minimum="{Binding MinColorTemperatureKelvin}"
-                                                                StepFrequency="50"
-                                                                Value="{Binding ColorTemperatureKelvin, Mode=TwoWay}" />
-                                                        </StackPanel>
-
-                                                        <StackPanel Spacing="6" Visibility="{Binding ColorVisibility}">
-                                                            <TextBlock Text="Color" />
-                                                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                                                <Button Width="32" Height="32" Padding="0" Background="#FFFFA05A" BorderThickness="1" Click="SetLightColorButton_Click" CommandParameter="{Binding}" IsEnabled="{Binding IsEnabled}" Tag="255,160,90" />
-                                                                <Button Width="32" Height="32" Padding="0" Background="#FFFFD666" BorderThickness="1" Click="SetLightColorButton_Click" CommandParameter="{Binding}" IsEnabled="{Binding IsEnabled}" Tag="255,214,102" />
-                                                                <Button Width="32" Height="32" Padding="0" Background="#FF5EEAD4" BorderThickness="1" Click="SetLightColorButton_Click" CommandParameter="{Binding}" IsEnabled="{Binding IsEnabled}" Tag="94,234,212" />
-                                                                <Button Width="32" Height="32" Padding="0" Background="#FF60A5FA" BorderThickness="1" Click="SetLightColorButton_Click" CommandParameter="{Binding}" IsEnabled="{Binding IsEnabled}" Tag="96,165,250" />
-                                                                <Button Width="32" Height="32" Padding="0" Background="#FFA78BFA" BorderThickness="1" Click="SetLightColorButton_Click" CommandParameter="{Binding}" IsEnabled="{Binding IsEnabled}" Tag="167,139,250" />
-                                                            </StackPanel>
-                                                        </StackPanel>
-
-                                                        <Button
-                                                            Click="ApplyLightControlsButton_Click"
-                                                            CommandParameter="{Binding}"
-                                                            IsEnabled="{Binding IsEnabled}"
-                                                            Visibility="{Binding LightControlsVisibility}">
-                                                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                                                <ProgressRing
-                                                                    Width="16"
-                                                                    Height="16"
-                                                                    IsActive="{Binding IsBusy}"
-                                                                    Visibility="{Binding BusyVisibility}" />
-                                                                <TextBlock Text="Apply" />
-                                                            </StackPanel>
-                                                        </Button>
-                                                    </StackPanel>
-                                                </Flyout>
-                                            </FlyoutBase.AttachedFlyout>
                                             <StackPanel Spacing="10">
                                                 <Grid ColumnSpacing="10">
                                                     <Grid.ColumnDefinitions>
@@ -206,4 +311,6 @@
             </ListView>
         </ScrollViewer>
     </Grid>
+        </SplitView.Content>
+    </SplitView>
 </Page>
