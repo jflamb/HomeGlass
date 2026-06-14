@@ -65,7 +65,8 @@
                                             Background="{Binding CardBackground}"
                                             BorderBrush="{Binding CardBorderBrush}"
                                             BorderThickness="{Binding CardBorderThickness}"
-                                            CornerRadius="8">
+                                            CornerRadius="8"
+                                            Opacity="{Binding CardOpacity}">
                                             <StackPanel Spacing="10">
                                                 <Grid ColumnSpacing="10">
                                                     <Grid.ColumnDefinitions>
