@@ -9,6 +9,7 @@ HomeGlass is a native Windows 11 smart home app concept inspired by the broad in
 - Home Assistant browser-based authorization flow from Settings.
 - Secure refresh token storage using Windows PasswordVault.
 - Authenticated Home Assistant REST API client for status, states, and service calls.
+- Rooms page populated from Home Assistant areas through the WebSocket API.
 
 ## Requirements
 

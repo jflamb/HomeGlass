@@ -10,50 +10,44 @@
     <Grid Padding="28" RowSpacing="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="Rooms" />
+        <StackPanel Spacing="4">
+            <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="Rooms" />
+            <TextBlock x:Name="RoomsSummaryText" TextWrapping="Wrap" />
+        </StackPanel>
 
-        <Grid Grid.Row="1" ColumnSpacing="12" RowSpacing="12">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
+        <InfoBar
+            x:Name="RoomsInfoBar"
+            Grid.Row="1"
+            IsOpen="False"
+            IsClosable="True" />
 
-            <Border Padding="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
-                <StackPanel Spacing="8">
-                    <TextBlock FontSize="20" FontWeight="SemiBold" Text="Living Room" />
-                    <TextBlock Text="7 accessories" />
-                    <TextBlock Text="72 F, lights dimmed" />
-                </StackPanel>
-            </Border>
-            <Border Grid.Column="1" Padding="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
-                <StackPanel Spacing="8">
-                    <TextBlock FontSize="20" FontWeight="SemiBold" Text="Kitchen" />
-                    <TextBlock Text="5 accessories" />
-                    <TextBlock Text="Lights on, no motion" />
-                </StackPanel>
-            </Border>
-            <Border Grid.Column="2" Padding="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
-                <StackPanel Spacing="8">
-                    <TextBlock FontSize="20" FontWeight="SemiBold" Text="Bedroom" />
-                    <TextBlock Text="4 accessories" />
-                    <TextBlock Text="Quiet mode" />
-                </StackPanel>
-            </Border>
-            <Border Grid.Row="1" Padding="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
-                <StackPanel Spacing="8">
-                    <TextBlock FontSize="20" FontWeight="SemiBold" Text="Office" />
-                    <TextBlock Text="6 accessories" />
-                    <TextBlock Text="Desk lamp on" />
-                </StackPanel>
-            </Border>
-        </Grid>
+        <GridView
+            x:Name="RoomsGridView"
+            Grid.Row="2"
+            IsItemClickEnabled="False"
+            SelectionMode="None">
+            <GridView.ItemTemplate>
+                <DataTemplate>
+                    <Border
+                        Width="220"
+                        MinHeight="128"
+                        Padding="18"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8">
+                        <StackPanel Spacing="8">
+                            <FontIcon HorizontalAlignment="Left" Glyph="{Binding IconGlyph}" />
+                            <TextBlock FontSize="20" FontWeight="SemiBold" Text="{Binding Name}" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding Detail}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+                </DataTemplate>
+            </GridView.ItemTemplate>
+        </GridView>
     </Grid>
 </Page>

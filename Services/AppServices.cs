@@ -9,4 +9,6 @@ public static class AppServices
     public static HomeAssistantAuthService HomeAssistantAuth { get; } = new(HttpClient, CredentialStore);
 
     public static HomeAssistantApiClient HomeAssistantApi { get; } = new(HttpClient, HomeAssistantAuth, CredentialStore);
+
+    public static HomeAssistantWebSocketClient HomeAssistantWebSocket { get; } = new(HomeAssistantAuth, CredentialStore);
 }
