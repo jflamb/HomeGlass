@@ -8,12 +8,48 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <Grid Padding="24,16,24,16" RowSpacing="24">
+    <ScrollViewer>
+        <Grid Padding="28" RowSpacing="20" MaxWidth="760" HorizontalAlignment="Left">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
         <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="Settings" />
-        <TextBlock Grid.Row="1" Text="This is the Settings page" />
-    </Grid>
+
+        <Border Grid.Row="1" Padding="20" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+            <StackPanel Spacing="16">
+                <StackPanel Spacing="4">
+                    <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Home Assistant" />
+                    <TextBlock x:Name="ConnectionSummaryText" TextWrapping="Wrap" />
+                </StackPanel>
+
+                <TextBox
+                    x:Name="HomeAssistantUrlTextBox"
+                    Header="Server URL"
+                    PlaceholderText="http://homeassistant.local:8123" />
+
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button x:Name="ConnectButton" Click="ConnectButton_Click" Content="Connect" />
+                    <Button x:Name="TestConnectionButton" Click="TestConnectionButton_Click" Content="Test" />
+                    <Button x:Name="SignOutButton" Click="SignOutButton_Click" Content="Sign out" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <InfoBar
+            x:Name="StatusInfoBar"
+            Grid.Row="2"
+            IsOpen="False"
+            IsClosable="True" />
+
+        <Border Grid.Row="3" Padding="20" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" CornerRadius="8">
+            <StackPanel Spacing="8">
+                <TextBlock FontWeight="SemiBold" Text="How sign-in works" />
+                <TextBlock TextWrapping="Wrap" Text="HomeGlass opens your Home Assistant sign-in page in the browser, receives the authorization result on a temporary local callback, stores the refresh token in Windows PasswordVault, and uses short-lived access tokens for API calls." />
+            </StackPanel>
+        </Border>
+        </Grid>
+    </ScrollViewer>
 </Page>
