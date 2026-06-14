@@ -40,35 +40,59 @@ public sealed class HomeAssistantWebSocketClient
         return await SendCommandAsync<IReadOnlyList<HomeAssistantEntityRegistryEntry>>("config/entity_registry/list", "entities", cancellationToken);
     }
 
+    public async Task SubscribeToStateChangesAsync(
+        Func<string, Task> onStateChangedAsync,
+        CancellationToken cancellationToken = default)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                using var socket = await ConnectAuthenticatedAsync(cancellationToken);
+                const int requestId = 1;
+                await SendJsonAsync(socket, new
+                {
+                    id = requestId,
+                    type = "subscribe_events",
+                    event_type = "state_changed"
+                }, cancellationToken);
+
+                using var subscriptionResponse = await ReceiveJsonAsync(socket, cancellationToken);
+                EnsureSuccessResponse(subscriptionResponse.RootElement, requestId, "state changes");
+
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    using var message = await ReceiveJsonAsync(socket, cancellationToken);
+                    var root = message.RootElement;
+                    if (GetMessageType(root) != "event" ||
+                        !root.TryGetProperty("event", out var eventElement) ||
+                        !eventElement.TryGetProperty("data", out var dataElement) ||
+                        !dataElement.TryGetProperty("entity_id", out var entityIdElement))
+                    {
+                        continue;
+                    }
+
+                    var entityId = entityIdElement.GetString();
+                    if (!string.IsNullOrWhiteSpace(entityId))
+                    {
+                        await onStateChangedAsync(entityId);
+                    }
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+            }
+        }
+    }
+
     private async Task<T> SendCommandAsync<T>(string commandType, string description, CancellationToken cancellationToken)
     {
-        var connection = _credentialStore.GetConnection()
-            ?? throw new InvalidOperationException("HomeGlass is not connected to Home Assistant.");
-        var accessToken = await _authService.GetAccessTokenAsync(cancellationToken);
-
-        using var socket = new ClientWebSocket();
-        await socket.ConnectAsync(GetWebSocketUri(connection.BaseUri), cancellationToken);
-
-        using var authRequired = await ReceiveJsonAsync(socket, cancellationToken);
-        RequireMessageType(authRequired.RootElement, "auth_required");
-
-        await SendJsonAsync(socket, new
-        {
-            type = "auth",
-            access_token = accessToken
-        }, cancellationToken);
-
-        using var authResponse = await ReceiveJsonAsync(socket, cancellationToken);
-        var authResponseType = GetMessageType(authResponse.RootElement);
-        if (authResponseType == "auth_invalid")
-        {
-            throw new InvalidOperationException("Home Assistant rejected the stored credentials. Sign out and connect again.");
-        }
-
-        if (authResponseType != "auth_ok")
-        {
-            throw new InvalidOperationException($"Home Assistant returned an unexpected WebSocket auth response: {authResponseType}.");
-        }
+        using var socket = await ConnectAuthenticatedAsync(cancellationToken);
 
         const int requestId = 1;
         await SendJsonAsync(socket, new
@@ -87,13 +111,7 @@ public sealed class HomeAssistantWebSocketClient
                 continue;
             }
 
-            if (root.TryGetProperty("success", out var successElement) && !successElement.GetBoolean())
-            {
-                var error = root.TryGetProperty("error", out var errorElement)
-                    ? errorElement.ToString()
-                    : "unknown error";
-                throw new InvalidOperationException($"Home Assistant could not load {description}: {error}");
-            }
+            EnsureSuccessResponse(root, requestId, description);
 
             if (!root.TryGetProperty("result", out var resultElement))
             {
@@ -102,6 +120,63 @@ public sealed class HomeAssistantWebSocketClient
 
             return resultElement.Deserialize<T>(JsonSerializerOptions)
                 ?? throw new InvalidOperationException($"Home Assistant returned an empty {description} response.");
+        }
+    }
+
+    private async Task<ClientWebSocket> ConnectAuthenticatedAsync(CancellationToken cancellationToken)
+    {
+        var connection = _credentialStore.GetConnection()
+            ?? throw new InvalidOperationException("HomeGlass is not connected to Home Assistant.");
+        var accessToken = await _authService.GetAccessTokenAsync(cancellationToken);
+
+        var socket = new ClientWebSocket();
+        try
+        {
+            await socket.ConnectAsync(GetWebSocketUri(connection.BaseUri), cancellationToken);
+
+            using var authRequired = await ReceiveJsonAsync(socket, cancellationToken);
+            RequireMessageType(authRequired.RootElement, "auth_required");
+
+            await SendJsonAsync(socket, new
+            {
+                type = "auth",
+                access_token = accessToken
+            }, cancellationToken);
+
+            using var authResponse = await ReceiveJsonAsync(socket, cancellationToken);
+            var authResponseType = GetMessageType(authResponse.RootElement);
+            if (authResponseType == "auth_invalid")
+            {
+                throw new InvalidOperationException("Home Assistant rejected the stored credentials. Sign out and connect again.");
+            }
+
+            if (authResponseType != "auth_ok")
+            {
+                throw new InvalidOperationException($"Home Assistant returned an unexpected WebSocket auth response: {authResponseType}.");
+            }
+
+            return socket;
+        }
+        catch
+        {
+            socket.Dispose();
+            throw;
+        }
+    }
+
+    private static void EnsureSuccessResponse(JsonElement root, int requestId, string description)
+    {
+        if (!root.TryGetProperty("id", out var idElement) || idElement.GetInt32() != requestId)
+        {
+            throw new InvalidOperationException($"Home Assistant returned an unexpected {description} response.");
+        }
+
+        if (root.TryGetProperty("success", out var successElement) && !successElement.GetBoolean())
+        {
+            var error = root.TryGetProperty("error", out var errorElement)
+                ? errorElement.ToString()
+                : "unknown error";
+            throw new InvalidOperationException($"Home Assistant could not load {description}: {error}");
         }
     }
 

@@ -10,32 +10,49 @@ namespace HomeGlass.Pages;
 
 public sealed partial class RoomsPage : Page
 {
+    private CancellationTokenSource? _stateSubscriptionCts;
+    private CancellationTokenSource? _refreshDebounceCts;
+    private bool _isLoadingRooms;
+
     public RoomsPage()
     {
         InitializeComponent();
         Loaded += RoomsPage_Loaded;
+        Unloaded += RoomsPage_Unloaded;
     }
 
     private async void RoomsPage_Loaded(object sender, RoutedEventArgs e)
     {
         await LoadRoomsAsync();
+        StartStateSubscription();
+    }
+
+    private void RoomsPage_Unloaded(object sender, RoutedEventArgs e)
+    {
+        StopStateSubscription();
     }
 
     private async Task LoadRoomsAsync()
     {
-        RoomsInfoBar.IsOpen = false;
-
-        if (AppServices.HomeAssistantAuth.CurrentConnection is null)
+        if (_isLoadingRooms)
         {
-            RoomGroupsListView.ItemsSource = Array.Empty<RoomGroupViewModel>();
-            RoomsSummaryText.Text = "Connect to Home Assistant in Settings to load rooms.";
             return;
         }
 
-        RoomsSummaryText.Text = "Loading rooms from Home Assistant...";
+        _isLoadingRooms = true;
+        RoomsInfoBar.IsOpen = false;
 
         try
         {
+            if (AppServices.HomeAssistantAuth.CurrentConnection is null)
+            {
+                RoomGroupsListView.ItemsSource = Array.Empty<RoomGroupViewModel>();
+                RoomsSummaryText.Text = "Connect to Home Assistant in Settings to load rooms.";
+                return;
+            }
+
+            RoomsSummaryText.Text = "Loading rooms from Home Assistant...";
+
             var areasTask = AppServices.HomeAssistantWebSocket.GetAreasAsync();
             var floorsTask = TryLoadAsync(AppServices.HomeAssistantWebSocket.GetFloorsAsync);
             var devicesTask = AppServices.HomeAssistantWebSocket.GetDevicesAsync();
@@ -68,6 +85,62 @@ public sealed partial class RoomsPage : Page
             RoomsSummaryText.Text = "Rooms could not be loaded.";
             ShowInfo(InfoBarSeverity.Error, "Home Assistant error", ex.Message);
         }
+        finally
+        {
+            _isLoadingRooms = false;
+        }
+    }
+
+    private void StartStateSubscription()
+    {
+        if (_stateSubscriptionCts is not null || AppServices.HomeAssistantAuth.CurrentConnection is null)
+        {
+            return;
+        }
+
+        _stateSubscriptionCts = new CancellationTokenSource();
+        var token = _stateSubscriptionCts.Token;
+        _ = Task.Run(async () =>
+        {
+            await AppServices.HomeAssistantWebSocket.SubscribeToStateChangesAsync(
+                _ =>
+                {
+                    QueueRoomsRefresh();
+                    return Task.CompletedTask;
+                },
+                token);
+        }, token);
+    }
+
+    private void StopStateSubscription()
+    {
+        _refreshDebounceCts?.Cancel();
+        _refreshDebounceCts?.Dispose();
+        _refreshDebounceCts = null;
+
+        _stateSubscriptionCts?.Cancel();
+        _stateSubscriptionCts?.Dispose();
+        _stateSubscriptionCts = null;
+    }
+
+    private void QueueRoomsRefresh()
+    {
+        _refreshDebounceCts?.Cancel();
+        _refreshDebounceCts?.Dispose();
+        _refreshDebounceCts = new CancellationTokenSource();
+        var token = _refreshDebounceCts.Token;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(750, token);
+                DispatcherQueue.TryEnqueue(async () => await LoadRoomsAsync());
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }, token);
     }
 
     private static IReadOnlyList<RoomGroupViewModel> BuildRoomGroups(
