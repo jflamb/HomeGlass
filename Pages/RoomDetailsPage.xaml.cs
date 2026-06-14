@@ -45,6 +45,7 @@ public sealed partial class RoomDetailsPage : Page
 
             var groups = BuildDeviceGroups(
                 room.AreaId,
+                room.Name,
                 devicesTask.Result,
                 entitiesTask.Result,
                 statesTask.Result);
@@ -56,14 +57,6 @@ public sealed partial class RoomDetailsPage : Page
         {
             _deviceGroups = [];
             DeviceGroupsListView.ItemsSource = Array.Empty<DeviceGroupViewModel>();
-        }
-    }
-
-    private async void DeviceGridView_ItemClick(object sender, ItemClickEventArgs e)
-    {
-        if (e.ClickedItem is DeviceCardViewModel device)
-        {
-            await ToggleDeviceAsync(device);
         }
     }
 
@@ -180,6 +173,7 @@ public sealed partial class RoomDetailsPage : Page
 
     private static IReadOnlyList<DeviceGroupViewModel> BuildDeviceGroups(
         string areaId,
+        string roomName,
         IReadOnlyList<HomeAssistantDevice> devices,
         IReadOnlyList<HomeAssistantEntityRegistryEntry> entities,
         IReadOnlyList<HomeAssistantEntityState> states)
@@ -201,7 +195,7 @@ public sealed partial class RoomDetailsPage : Page
             .Select(device =>
             {
                 entitiesByDevice.TryGetValue(device.Id, out var deviceEntities);
-                return DeviceCardViewModel.FromDevice(device, deviceEntities ?? [], roomEntities, statesByEntityId);
+                return DeviceCardViewModel.FromDevice(device, roomName, deviceEntities ?? [], roomEntities, statesByEntityId);
             })
             .GroupBy(device => device.Type, StringComparer.CurrentCultureIgnoreCase)
             .OrderBy(group => GetTypeOrder(group.Key))
@@ -340,6 +334,7 @@ public sealed class DeviceCardViewModel : ObservableObject
             SetProperty(ref _isBusy, value);
             OnPropertyChanged(nameof(IsEnabled));
             OnPropertyChanged(nameof(BusyVisibility));
+            OnPropertyChanged(nameof(IconVisibility));
             OnPropertyChanged(nameof(ToggleToolTip));
         }
     }
@@ -348,7 +343,7 @@ public sealed class DeviceCardViewModel : ObservableObject
 
     public Visibility BusyVisibility => IsBusy ? Visibility.Visible : Visibility.Collapsed;
 
-    public Visibility QuickActionVisibility => IsControllable ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility IconVisibility => IsBusy ? Visibility.Collapsed : Visibility.Visible;
 
     public Visibility DetailControlsVisibility => IsControllable ? Visibility.Visible : Visibility.Collapsed;
 
@@ -360,20 +355,13 @@ public sealed class DeviceCardViewModel : ObservableObject
 
     public Visibility ColorVisibility => SupportsColor ? Visibility.Visible : Visibility.Collapsed;
 
-    public string ActionGlyph => PrimaryDomain switch
-    {
-        "light" => "\uE706",
-        "fan" => "\uE9CA",
-        _ => "\uE8AB"
-    };
-
     public string ToggleToolTip => IsBusy
         ? "Sending command..."
         : PrimaryDomain switch
         {
             "light" => IsOn ? "Turn off light" : "Turn on light",
             "fan" => IsOn ? "Turn off fan" : "Turn on fan",
-            _ => "Toggle"
+            _ => Type
         };
 
     public string ControlSummary => PrimaryDomain switch
@@ -409,6 +397,7 @@ public sealed class DeviceCardViewModel : ObservableObject
 
     public static DeviceCardViewModel FromDevice(
         HomeAssistantDevice device,
+        string roomName,
         IReadOnlyList<HomeAssistantEntityRegistryEntry> entities,
         IReadOnlyList<HomeAssistantEntityRegistryEntry> roomEntities,
         IReadOnlyDictionary<string, HomeAssistantEntityState> statesByEntityId)
@@ -417,7 +406,7 @@ public sealed class DeviceCardViewModel : ObservableObject
             .Select(entity => statesByEntityId.TryGetValue(entity.EntityId, out var state) ? state : null)
             .OfType<HomeAssistantEntityState>()
             .ToList();
-        var primaryDomain = GetPrimaryDomain(states, entities);
+        var primaryDomain = GetPrimaryDomain(device, states, entities);
         var primaryStates = states.Where(state => GetDomain(state.EntityId) == primaryDomain).ToList();
         var primaryState = primaryStates.FirstOrDefault(state => state.State == "on")
             ?? primaryStates.FirstOrDefault();
@@ -432,7 +421,7 @@ public sealed class DeviceCardViewModel : ObservableObject
         var lightFeatures = GetLightFeatures(primaryStates);
 
         return new DeviceCardViewModel(
-            device.NameByUser ?? device.Name ?? device.Model ?? "Device",
+            TrimRoomPrefix(device.NameByUser ?? device.Name ?? device.Model ?? "Device", roomName),
             BuildDetail(device, entities, states, primaryDomain),
             GetTypeName(primaryDomain),
             GetIconGlyph(primaryDomain),
@@ -458,9 +447,17 @@ public sealed class DeviceCardViewModel : ObservableObject
             primaryStates.Any(state => state.State == "on"));
     }
 
-    private static string GetPrimaryDomain(IReadOnlyList<HomeAssistantEntityState> states, IReadOnlyList<HomeAssistantEntityRegistryEntry> entities)
+    private static string GetPrimaryDomain(
+        HomeAssistantDevice device,
+        IReadOnlyList<HomeAssistantEntityState> states,
+        IReadOnlyList<HomeAssistantEntityRegistryEntry> entities)
     {
         var domains = states.Select(state => GetDomain(state.EntityId)).Concat(entities.Select(entity => GetDomain(entity.EntityId))).ToList();
+        if (domains.Contains("fan") || LooksLikeFanDevice(device))
+        {
+            return "fan";
+        }
+
         foreach (var domain in new[] { "light", "fan", "climate", "lock", "cover", "media_player", "binary_sensor", "sensor" })
         {
             if (domains.Contains(domain))
@@ -470,6 +467,21 @@ public sealed class DeviceCardViewModel : ObservableObject
         }
 
         return domains.FirstOrDefault(domain => !string.IsNullOrWhiteSpace(domain)) ?? "device";
+    }
+
+    private static bool LooksLikeFanDevice(HomeAssistantDevice device)
+    {
+        return ContainsWord(device.NameByUser, "fan")
+            || ContainsWord(device.Name, "fan")
+            || ContainsWord(device.Model, "fan")
+            || ContainsWord(device.Manufacturer, "Big Ass Fans")
+            || ContainsWord(device.Model, "Haiku");
+    }
+
+    private static bool ContainsWord(string? value, string word)
+    {
+        return !string.IsNullOrWhiteSpace(value)
+            && value.Contains(word, StringComparison.CurrentCultureIgnoreCase);
     }
 
     private static IReadOnlyList<StatusChipViewModel> BuildStatusChips(
@@ -530,6 +542,17 @@ public sealed class DeviceCardViewModel : ObservableObject
                 chips.Add(active > 0
                     ? StatusChipViewModel.Warning($"{active} active", $"{active} sensor {Pluralize(active, "state")} active.")
                     : StatusChipViewModel.Neutral("Clear", "Sensors are inactive."));
+                break;
+            case "sensor":
+                var battery = primaryStates.FirstOrDefault(IsBatterySensor);
+                if (battery is not null && int.TryParse(battery.State, out var batteryLevel))
+                {
+                    chips.Add(StatusChipViewModel.Neutral($"🔋 {batteryLevel}%", $"Battery level is {batteryLevel}%."));
+                    break;
+                }
+
+                var sensorState = primaryStates.FirstOrDefault()?.State ?? "Unknown";
+                chips.Add(StatusChipViewModel.Neutral(NormalizeState(sensorState), "Current sensor state."));
                 break;
             case "climate":
                 var climate = primaryStates.FirstOrDefault();
@@ -622,6 +645,14 @@ public sealed class DeviceCardViewModel : ObservableObject
         }
 
         return name;
+    }
+
+    private static bool IsBatterySensor(HomeAssistantEntityState state)
+    {
+        return GetDomain(state.EntityId) == "sensor"
+            && (state.EntityId.Contains("battery", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(TryGetAttributeString(state, "device_class"), "battery", StringComparison.OrdinalIgnoreCase)
+                || (TryGetAttributeString(state, "friendly_name")?.Contains("battery", StringComparison.CurrentCultureIgnoreCase) ?? false));
     }
 
     private static bool IsActive(string primaryDomain, IReadOnlyList<HomeAssistantEntityState> states)
@@ -759,6 +790,35 @@ public sealed class DeviceCardViewModel : ObservableObject
         }
 
         return $"{manufacturer} {model}";
+    }
+
+    private static string TrimRoomPrefix(string name, string roomName)
+    {
+        if (string.IsNullOrWhiteSpace(roomName))
+        {
+            return name;
+        }
+
+        var trimmedName = name.Trim();
+        var trimmedRoomName = roomName.Trim();
+        if (!trimmedName.StartsWith(trimmedRoomName, StringComparison.CurrentCultureIgnoreCase))
+        {
+            return trimmedName;
+        }
+
+        if (trimmedName.Length == trimmedRoomName.Length)
+        {
+            return trimmedName;
+        }
+
+        var separator = trimmedName[trimmedRoomName.Length];
+        if (separator is not (' ' or '-' or '_' or ':' or '/'))
+        {
+            return trimmedName;
+        }
+
+        var withoutPrefix = trimmedName[(trimmedRoomName.Length + 1)..].Trim();
+        return string.IsNullOrWhiteSpace(withoutPrefix) ? trimmedName : withoutPrefix;
     }
 
     private static bool TryGetLightGroupDescription(

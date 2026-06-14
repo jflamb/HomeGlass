@@ -53,9 +53,8 @@
                             </StackPanel>
 
                             <GridView
-                                ItemClick="DeviceGridView_ItemClick"
                                 ItemsSource="{Binding Devices}"
-                                IsItemClickEnabled="True"
+                                IsItemClickEnabled="False"
                                 SelectionMode="None">
                                 <GridView.ItemTemplate>
                                     <DataTemplate>
@@ -75,35 +74,29 @@
                                                         <ColumnDefinition Width="*" />
                                                         <ColumnDefinition Width="Auto" />
                                                     </Grid.ColumnDefinitions>
-                                                    <FontIcon
-                                                        Width="20"
-                                                        Height="24"
-                                                        Margin="0,3,0,0"
-                                                        FontSize="18"
-                                                        HorizontalAlignment="Center"
-                                                        VerticalAlignment="Top"
-                                                        Glyph="{Binding IconGlyph}" />
+                                                    <Button
+                                                        Width="32"
+                                                        Height="32"
+                                                        Margin="-6,-3,0,0"
+                                                        Padding="0"
+                                                        Click="ToggleDeviceButton_Click"
+                                                        CommandParameter="{Binding}"
+                                                        IsEnabled="{Binding IsEnabled}"
+                                                        ToolTipService.ToolTip="{Binding ToggleToolTip}">
+                                                        <Grid>
+                                                            <FontIcon FontSize="16" Glyph="{Binding IconGlyph}" Visibility="{Binding IconVisibility}" />
+                                                            <ProgressRing
+                                                                Width="16"
+                                                                Height="16"
+                                                                IsActive="{Binding IsBusy}"
+                                                                Visibility="{Binding BusyVisibility}" />
+                                                        </Grid>
+                                                    </Button>
                                                     <StackPanel Grid.Column="1" Spacing="2">
                                                         <TextBlock FontSize="18" FontWeight="SemiBold" Text="{Binding Name}" TextWrapping="Wrap" />
                                                         <TextBlock Text="{Binding Detail}" TextWrapping="Wrap" />
                                                     </StackPanel>
                                                     <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4">
-                                                        <ProgressRing
-                                                            Width="24"
-                                                            Height="24"
-                                                            IsActive="{Binding IsBusy}"
-                                                            Visibility="{Binding BusyVisibility}" />
-                                                        <Button
-                                                            Width="32"
-                                                            Height="32"
-                                                            Padding="0"
-                                                            Click="ToggleDeviceButton_Click"
-                                                            CommandParameter="{Binding}"
-                                                            IsEnabled="{Binding IsEnabled}"
-                                                            ToolTipService.ToolTip="{Binding ToggleToolTip}"
-                                                            Visibility="{Binding QuickActionVisibility}">
-                                                            <FontIcon FontSize="14" Glyph="{Binding ActionGlyph}" />
-                                                        </Button>
                                                         <Button
                                                             Width="32"
                                                             Height="32"
