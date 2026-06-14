@@ -22,6 +22,26 @@ public sealed class HomeAssistantWebSocketClient
 
     public async Task<IReadOnlyList<HomeAssistantArea>> GetAreasAsync(CancellationToken cancellationToken = default)
     {
+        return await SendCommandAsync<IReadOnlyList<HomeAssistantArea>>("config/area_registry/list", "rooms", cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<HomeAssistantFloor>> GetFloorsAsync(CancellationToken cancellationToken = default)
+    {
+        return await SendCommandAsync<IReadOnlyList<HomeAssistantFloor>>("config/floor_registry/list", "floors", cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<HomeAssistantDevice>> GetDevicesAsync(CancellationToken cancellationToken = default)
+    {
+        return await SendCommandAsync<IReadOnlyList<HomeAssistantDevice>>("config/device_registry/list", "devices", cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<HomeAssistantEntityRegistryEntry>> GetEntityRegistryAsync(CancellationToken cancellationToken = default)
+    {
+        return await SendCommandAsync<IReadOnlyList<HomeAssistantEntityRegistryEntry>>("config/entity_registry/list", "entities", cancellationToken);
+    }
+
+    private async Task<T> SendCommandAsync<T>(string commandType, string description, CancellationToken cancellationToken)
+    {
         var connection = _credentialStore.GetConnection()
             ?? throw new InvalidOperationException("HomeGlass is not connected to Home Assistant.");
         var accessToken = await _authService.GetAccessTokenAsync(cancellationToken);
@@ -54,7 +74,7 @@ public sealed class HomeAssistantWebSocketClient
         await SendJsonAsync(socket, new
         {
             id = requestId,
-            type = "config/area_registry/list"
+            type = commandType
         }, cancellationToken);
 
         while (true)
@@ -72,16 +92,16 @@ public sealed class HomeAssistantWebSocketClient
                 var error = root.TryGetProperty("error", out var errorElement)
                     ? errorElement.ToString()
                     : "unknown error";
-                throw new InvalidOperationException($"Home Assistant could not load rooms: {error}");
+                throw new InvalidOperationException($"Home Assistant could not load {description}: {error}");
             }
 
             if (!root.TryGetProperty("result", out var resultElement))
             {
-                throw new InvalidOperationException("Home Assistant returned a room response without a result.");
+                throw new InvalidOperationException($"Home Assistant returned a {description} response without a result.");
             }
 
-            return resultElement.Deserialize<IReadOnlyList<HomeAssistantArea>>(JsonSerializerOptions)
-                ?? Array.Empty<HomeAssistantArea>();
+            return resultElement.Deserialize<T>(JsonSerializerOptions)
+                ?? throw new InvalidOperationException($"Home Assistant returned an empty {description} response.");
         }
     }
 
