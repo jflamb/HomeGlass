@@ -1018,7 +1018,10 @@ public sealed class DeviceCardViewModel : ObservableObject
     private static string FormatSensorValue(HomeAssistantEntityState state)
     {
         var unit = TryGetAttributeString(state, "unit_of_measurement");
-        return string.IsNullOrWhiteSpace(unit) ? NormalizeState(state.State) : $"{state.State}{unit}";
+        var value = double.TryParse(state.State, out var numericValue)
+            ? $"{Math.Round(numericValue)}"
+            : NormalizeState(state.State);
+        return string.IsNullOrWhiteSpace(unit) ? value : $"{value}{unit}";
     }
 
     private static string? TryGetRgbColorDescription(HomeAssistantEntityState state)
