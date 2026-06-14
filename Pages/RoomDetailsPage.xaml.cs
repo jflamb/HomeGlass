@@ -821,8 +821,9 @@ public sealed class DeviceCardViewModel : ObservableObject
         var primaryDomain = GetPrimaryDomain(device, states, entities);
         var serviceDomain = primaryDomain == "light_group" ? "light" : primaryDomain;
         var primaryStates = GetPrimaryStates(primaryDomain, states);
-        var primaryState = primaryStates.FirstOrDefault(state => state.State == "on")
-            ?? primaryStates.FirstOrDefault();
+        var primaryState = primaryDomain == "light_group"
+            ? GetLightGroupPrimaryState(primaryStates, entities)
+            : primaryStates.FirstOrDefault(state => state.State == "on") ?? primaryStates.FirstOrDefault();
         var unavailable = IsUnavailable(primaryDomain, states);
         var active = !unavailable && IsActive(primaryDomain, states);
         var chips = BuildStatusChips(primaryDomain, states, roomEntities, statesByEntityId, isLightGroup);
@@ -1007,6 +1008,32 @@ public sealed class DeviceCardViewModel : ObservableObject
         }
 
         return domains.FirstOrDefault(domain => !string.IsNullOrWhiteSpace(domain)) ?? "device";
+    }
+
+    private static HomeAssistantEntityState? GetLightGroupPrimaryState(
+        IReadOnlyList<HomeAssistantEntityState> primaryStates,
+        IReadOnlyList<HomeAssistantEntityRegistryEntry> entities)
+    {
+        var groupedMemberIds = primaryStates
+            .SelectMany(GetGroupedEntityIds)
+            .ToHashSet(StringComparer.Ordinal);
+
+        return primaryStates.FirstOrDefault(HasGroupedEntityList)
+            ?? primaryStates.FirstOrDefault(state =>
+            {
+                var entity = entities.FirstOrDefault(candidate => candidate.EntityId == state.EntityId);
+                return entity is not null && LooksLikeLightGroupEntity(entity, state);
+            })
+            ?? primaryStates.FirstOrDefault(state =>
+            {
+                var friendlyName = TryGetAttributeString(state, "friendly_name") ?? string.Empty;
+                return ContainsWord(state.EntityId, "group")
+                    || ContainsWord(friendlyName, "group")
+                    || ContainsWord(friendlyName, "lights");
+            })
+            ?? primaryStates.FirstOrDefault(state => !groupedMemberIds.Contains(state.EntityId))
+            ?? primaryStates.FirstOrDefault(state => state.State == "on")
+            ?? primaryStates.FirstOrDefault();
     }
 
     private static bool LooksLikeFanDevice(HomeAssistantDevice device)
