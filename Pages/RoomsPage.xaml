@@ -57,13 +57,19 @@
                                         <StackPanel Spacing="10">
                                             <Grid ColumnSpacing="10">
                                                 <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="24" />
                                                     <ColumnDefinition Width="*" />
                                                 </Grid.ColumnDefinitions>
-                                                <FontIcon VerticalAlignment="Top" Glyph="{Binding IconGlyph}" />
+                                                <FontIcon
+                                                    Width="20"
+                                                    Height="24"
+                                                    Margin="0,3,0,0"
+                                                    FontSize="18"
+                                                    HorizontalAlignment="Center"
+                                                    VerticalAlignment="Top"
+                                                    Glyph="{Binding IconGlyph}" />
                                                 <StackPanel Grid.Column="1" Spacing="2">
                                                     <TextBlock FontSize="20" FontWeight="SemiBold" Text="{Binding Name}" TextWrapping="Wrap" />
-                                                    <TextBlock Text="{Binding Detail}" TextWrapping="Wrap" />
                                                 </StackPanel>
                                             </Grid>
 
@@ -81,7 +87,7 @@
                                                 </ItemsControl.ItemTemplate>
                                                 <ItemsControl.ItemsPanel>
                                                     <ItemsPanelTemplate>
-                                                        <ItemsWrapGrid Orientation="Horizontal" />
+                                                        <StackPanel Orientation="Horizontal" />
                                                     </ItemsPanelTemplate>
                                                 </ItemsControl.ItemsPanel>
                                             </ItemsControl>

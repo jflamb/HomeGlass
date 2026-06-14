@@ -153,9 +153,7 @@ public sealed partial class RoomsPage : Page
 
     private static string BuildGroupSummary(IReadOnlyList<RoomCardViewModel> rooms)
     {
-        var deviceCount = rooms.Sum(room => room.DeviceCount);
-
-        return $"{rooms.Count} {Pluralize(rooms.Count, "room")}, {deviceCount} {Pluralize(deviceCount, "device")}";
+        return $"{rooms.Count} {Pluralize(rooms.Count, "room")}";
     }
 
     private static string Pluralize(int count, string noun)
@@ -176,7 +174,6 @@ public sealed record RoomGroupViewModel(string Name, string Summary, IReadOnlyLi
 
 public sealed record RoomCardViewModel(
     string Name,
-    string Detail,
     string IconGlyph,
     IReadOnlyList<string> StatusChips,
     int DeviceCount)
@@ -188,32 +185,32 @@ public sealed record RoomCardViewModel(
         IReadOnlyDictionary<string, HomeAssistantEntityState> statesByEntityId)
     {
         var availableEntities = entities
-            .Select(entity => statesByEntityId.TryGetValue(entity.EntityId, out var state) ? state : null)
-            .OfType<HomeAssistantEntityState>()
+            .Select(entity => statesByEntityId.TryGetValue(entity.EntityId, out var state)
+                ? new RoomEntityState(entity, state)
+                : null)
+            .OfType<RoomEntityState>()
             .ToList();
 
         var chips = BuildStatusChips(availableEntities, devices.Count);
-        var detail = $"{devices.Count} {Pluralize(devices.Count, "device")}";
 
         return new RoomCardViewModel(
             area.Name,
-            detail,
             GetIconGlyph(area.Icon),
             chips,
             devices.Count);
     }
 
     private static IReadOnlyList<string> BuildStatusChips(
-        IReadOnlyList<HomeAssistantEntityState> states,
+        IReadOnlyList<RoomEntityState> entities,
         int deviceCount)
     {
         var chips = new List<string>();
 
-        var lightStates = states
-            .Where(state => GetDomain(state.EntityId) == "light")
+        var lightStates = entities
+            .Where(entity => GetDomain(entity.State.EntityId) == "light")
             .Where(IsPrimaryLight)
             .ToList();
-        var lightsOn = lightStates.Count(state => state.State == "on");
+        var lightsOn = lightStates.Count(entity => entity.State.State == "on");
         if (lightsOn > 0)
         {
             chips.Add($"{lightsOn} {Pluralize(lightsOn, "light")} on");
@@ -223,8 +220,8 @@ public sealed record RoomCardViewModel(
             chips.Add("Lights off");
         }
 
-        var fans = states.Where(state => GetDomain(state.EntityId) == "fan").ToList();
-        var fansOn = fans.Count(state => state.State == "on");
+        var fans = entities.Where(entity => GetDomain(entity.State.EntityId) == "fan").ToList();
+        var fansOn = fans.Count(entity => entity.State.State == "on");
         if (fansOn > 0)
         {
             chips.Add($"{fansOn} {Pluralize(fansOn, "fan")} on");
@@ -234,25 +231,25 @@ public sealed record RoomCardViewModel(
             chips.Add("Fans off");
         }
 
-        var climateChip = BuildClimateChip(states);
+        var climateChip = BuildClimateChip(entities);
         if (!string.IsNullOrWhiteSpace(climateChip))
         {
             chips.Add(climateChip);
         }
 
-        var presenceChip = BuildPresenceChip(states);
+        var presenceChip = BuildPresenceChip(entities);
         if (!string.IsNullOrWhiteSpace(presenceChip))
         {
             chips.Add(presenceChip);
         }
 
-        var lockChip = BuildLockChip(states);
+        var lockChip = BuildLockChip(entities);
         if (!string.IsNullOrWhiteSpace(lockChip))
         {
             chips.Add(lockChip);
         }
 
-        var contactChip = BuildContactChip(states);
+        var contactChip = BuildContactChip(entities);
         if (!string.IsNullOrWhiteSpace(contactChip))
         {
             chips.Add(contactChip);
@@ -279,19 +276,33 @@ public sealed record RoomCardViewModel(
             : null;
     }
 
-    private static bool IsPrimaryLight(HomeAssistantEntityState state)
+    private static bool IsPrimaryLight(RoomEntityState entity)
     {
-        if (!state.Attributes.TryGetProperty("entity_id", out var groupedEntities))
+        if (entity.Entity.Platform == "group")
         {
-            return true;
+            return false;
         }
 
-        return groupedEntities.ValueKind != System.Text.Json.JsonValueKind.Array;
+        if (entity.State.Attributes.TryGetProperty("entity_id", out var groupedEntities) &&
+            groupedEntities.ValueKind == System.Text.Json.JsonValueKind.Array)
+        {
+            return false;
+        }
+
+        var searchableName = $"{entity.Entity.Name} {entity.Entity.OriginalName} {entity.State.EntityId}";
+        if (ContainsAny(searchableName, "rgb indicator", "indicator", "status", "notification", "led"))
+        {
+            return false;
+        }
+
+        return true;
     }
 
-    private static string? BuildClimateChip(IReadOnlyList<HomeAssistantEntityState> states)
+    private static string? BuildClimateChip(IReadOnlyList<RoomEntityState> entities)
     {
-        var climate = states.FirstOrDefault(state => GetDomain(state.EntityId) == "climate");
+        var climate = entities
+            .Select(entity => entity.State)
+            .FirstOrDefault(state => GetDomain(state.EntityId) == "climate");
         if (climate is null)
         {
             return null;
@@ -308,9 +319,10 @@ public sealed record RoomCardViewModel(
             : $"{temperature} {NormalizeState(climate.State)}";
     }
 
-    private static string? BuildPresenceChip(IReadOnlyList<HomeAssistantEntityState> states)
+    private static string? BuildPresenceChip(IReadOnlyList<RoomEntityState> entities)
     {
-        var presenceStates = states
+        var presenceStates = entities
+            .Select(entity => entity.State)
             .Where(state =>
                 GetDomain(state.EntityId) == "binary_sensor" &&
                 TryGetDeviceClass(state) is "motion" or "occupancy" or "presence")
@@ -326,9 +338,9 @@ public sealed record RoomCardViewModel(
             : "No presence";
     }
 
-    private static string? BuildLockChip(IReadOnlyList<HomeAssistantEntityState> states)
+    private static string? BuildLockChip(IReadOnlyList<RoomEntityState> entities)
     {
-        var locks = states.Where(state => GetDomain(state.EntityId) == "lock").ToList();
+        var locks = entities.Select(entity => entity.State).Where(state => GetDomain(state.EntityId) == "lock").ToList();
         if (locks.Count == 0)
         {
             return null;
@@ -344,9 +356,10 @@ public sealed record RoomCardViewModel(
         return locked == locks.Count ? "Locked" : null;
     }
 
-    private static string? BuildContactChip(IReadOnlyList<HomeAssistantEntityState> states)
+    private static string? BuildContactChip(IReadOnlyList<RoomEntityState> entities)
     {
-        var contacts = states
+        var contacts = entities
+            .Select(entity => entity.State)
             .Where(state =>
                 GetDomain(state.EntityId) == "binary_sensor" &&
                 TryGetDeviceClass(state) is "door" or "garage_door" or "opening" or "window")
@@ -386,6 +399,11 @@ public sealed record RoomCardViewModel(
         return state.Replace('_', ' ');
     }
 
+    private static bool ContainsAny(string value, params string[] needles)
+    {
+        return needles.Any(needle => value.Contains(needle, StringComparison.CurrentCultureIgnoreCase));
+    }
+
     private static string Pluralize(int count, string noun)
     {
         return count == 1 ? noun : $"{noun}s";
@@ -405,3 +423,5 @@ public sealed record RoomCardViewModel(
         };
     }
 }
+
+public sealed record RoomEntityState(HomeAssistantEntityRegistryEntry Entity, HomeAssistantEntityState State);
